@@ -14,16 +14,42 @@ import httpx
 
 TIMEOUT = 60
 
-# Modelo por defecto (el que ya usaba consulta_ias) y variante barata para
-# la tarea diaria rutinaria (ver prompts-sistema/README.md, tiering por
-# tarea). Nombres de la variante barata de GPT/Gemini son la mejor
-# estimación a fecha de este diseño — verificar el nombre exacto vigente
-# al dar de alta las 4 cuentas este finde, pueden haber cambiado.
+# Tres tiers: "diaria" (barato, tarea rutinaria de cron), "semanal"
+# (flagship de coste contenido, para la newsletter semanal de cada agente)
+# y "consejo" (el más potente de cada casa, solo para el consejo de sabios
+# — decisiones puntuales no-cron como nombre de dominio o checkpoints, ver
+# consulta_ias/debate.py). Nombres verificados en vivo contra el ListModels
+# real de cada proveedor el 2026-08-29, no adivinados:
+#   - Gemini: no hay "pro" estable con fecha en la línea 3.x todavía, solo
+#     gemini-3.1-pro-preview (preview, floating). Se usa igualmente en
+#     "consejo" porque esta herramienta la dispara Tato a mano y revisa el
+#     resultado — el riesgo de un preview que cambie es aceptable aquí,
+#     no en el cron diario desatendido (por eso "diaria"/"semanal" de
+#     Gemini siguen en gemini-3.7-flash, estable y con fecha).
+#   - GPT: gpt-5.5-pro-2026-04-23, el pro dated más reciente disponible.
+#   - Claude: claude-opus-5, el flagship actual de Anthropic.
+#   - DeepSeek: deepseek-reasoner ya es su tier más potente, sin cambio.
 MODELOS = {
-    "claude": {"diaria": "claude-haiku-4-5-20251001", "semanal": "claude-sonnet-5"},
-    "gpt": {"diaria": "gpt-5.2-mini", "semanal": "gpt-5.2"},
-    "gemini": {"diaria": "gemini-3.7-flash", "semanal": "gemini-3.7-flash"},
-    "deepseek": {"diaria": "deepseek-chat", "semanal": "deepseek-reasoner"},
+    "claude": {
+        "diaria": "claude-haiku-4-5-20251001",
+        "semanal": "claude-sonnet-5",
+        "consejo": "claude-opus-5",
+    },
+    "gpt": {
+        "diaria": "gpt-5.2-mini",
+        "semanal": "gpt-5.2",
+        "consejo": "gpt-5.5-pro-2026-04-23",
+    },
+    "gemini": {
+        "diaria": "gemini-3.7-flash",
+        "semanal": "gemini-3.7-flash",
+        "consejo": "gemini-3.1-pro-preview",
+    },
+    "deepseek": {
+        "diaria": "deepseek-chat",
+        "semanal": "deepseek-reasoner",
+        "consejo": "deepseek-reasoner",
+    },
 }
 
 
@@ -89,6 +115,43 @@ def _llamar_openai_compat(url: str, header_key: str, system: str, user: str, mod
     }
 
 
+def _llamar_gpt_responses_meta(system: str, user: str, modelo: str) -> dict:
+    """Los modelos "pro" de OpenAI (gpt-5.5-pro y superiores) no están
+    expuestos en /v1/chat/completions (da 404) — solo en /v1/responses, con
+    formato de request/response distinto. Confirmado en vivo el 2026-08-29
+    al dar de alta el tier "consejo"."""
+    if err := _falta_key("OPENAI_API_KEY"):
+        return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
+    t0 = time.monotonic()
+    resp = httpx.post(
+        "https://api.openai.com/v1/responses",
+        headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
+        json={"model": modelo, "instructions": system, "input": user},
+        timeout=TIMEOUT,
+    )
+    duracion = time.monotonic() - t0
+    resp.raise_for_status()
+    data = resp.json()
+    texto = next(
+        (
+            c["text"]
+            for item in data.get("output", [])
+            if item.get("type") == "message"
+            for c in item.get("content", [])
+            if c.get("type") == "output_text"
+        ),
+        "",
+    )
+    usage = data.get("usage", {})
+    return {
+        "texto": texto,
+        "tokens_in": usage.get("input_tokens"),
+        "tokens_out": usage.get("output_tokens"),
+        "duracion_seg": round(duracion, 2),
+        "modelo": data.get("model", modelo),
+    }
+
+
 def _llamar_gemini_meta(system: str, user: str, modelo: str) -> dict:
     if err := _falta_key("GOOGLE_API_KEY"):
         return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
@@ -118,8 +181,12 @@ def _llamar_gemini_meta(system: str, user: str, modelo: str) -> dict:
 
 _LLAMADAS_META = {
     "claude": lambda system, user, modelo: _llamar_claude_meta(system, user, modelo),
-    "gpt": lambda system, user, modelo: _llamar_openai_compat(
-        "https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", system, user, modelo
+    # Los modelos "pro" de OpenAI solo viven en /v1/responses (ver
+    # _llamar_gpt_responses_meta) — el resto sigue por chat/completions.
+    "gpt": lambda system, user, modelo: (
+        _llamar_gpt_responses_meta(system, user, modelo)
+        if "pro" in modelo
+        else _llamar_openai_compat("https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", system, user, modelo)
     ),
     "gemini": lambda system, user, modelo: _llamar_gemini_meta(system, user, modelo),
     "deepseek": lambda system, user, modelo: _llamar_openai_compat(
@@ -135,22 +202,23 @@ def llamar_con_metadata(ia: str, system: str, user: str, tier: str = "diaria", m
     return _LLAMADAS_META[ia](system, user, modelo)
 
 
-# --- wrappers de solo texto, usados por consulta_ias/debate.py (consejo de sabios) ---
+# --- wrappers de solo texto, usados por consulta_ias/debate.py (consejo de
+# sabios) — tier "consejo": el modelo más potente de cada casa, ver MODELOS ---
 
 def llamar_claude(system: str, user: str) -> str:
-    return llamar_con_metadata("claude", system, user, tier="semanal")["texto"]
+    return llamar_con_metadata("claude", system, user, tier="consejo")["texto"]
 
 
 def llamar_gpt(system: str, user: str) -> str:
-    return llamar_con_metadata("gpt", system, user, tier="semanal")["texto"]
+    return llamar_con_metadata("gpt", system, user, tier="consejo")["texto"]
 
 
 def llamar_gemini(system: str, user: str) -> str:
-    return llamar_con_metadata("gemini", system, user, tier="semanal")["texto"]
+    return llamar_con_metadata("gemini", system, user, tier="consejo")["texto"]
 
 
 def llamar_deepseek(system: str, user: str) -> str:
-    return llamar_con_metadata("deepseek", system, user, tier="semanal")["texto"]
+    return llamar_con_metadata("deepseek", system, user, tier="consejo")["texto"]
 
 
 IAS = {
