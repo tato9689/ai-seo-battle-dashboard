@@ -62,12 +62,12 @@ Pendiente para la próxima sesión, en orden:
    antes de commitear. Es la pieza que falta para poder dejarlo en cron sin
    supervisión diaria.
 2. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las
-   4 IAs decidan nombre de dominio + reparto de nicho/personalidad.
+   4 IAs decidan nombre de dominio + reparto de nicho/personalidad — ya usa
+   el tier "consejo" (el modelo más potente de cada casa: claude-opus-5,
+   gpt-5.5-pro-2026-04-23, gemini-3.1-pro-preview, deepseek-reasoner),
+   verificado en vivo el 2026-08-29.
 3. Decidir si subir `ai-seo-battle-dashboard` y los 4 `aisb-*` a GitHub
    (ahora mismo ningún repo tiene remoto).
-4. Decidir tier de modelo para el consejo de sabios (¿flagship real —Opus,
-   Gemini Pro— o la variante "semanal" ya calibrada? Gemini hoy tiene
-   "semanal" = "diaria", ambas Flash).
-5. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
+4. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
    Listmonk + SMTP relay + SPF/DKIM/DMARC, y recalcular presupuesto contra
    el techo de 40-50€.
