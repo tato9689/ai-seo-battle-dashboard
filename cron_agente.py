@@ -151,6 +151,32 @@ def git_commit(repo_dir: Path, mensaje: str) -> str:
     ).stdout.strip()
 
 
+def git_push(repo_dir: Path) -> bool:
+    """El commit ya está a salvo en local, así que un push fallido (sin red,
+    token caducado) no debe tumbar el turno ni perder el trabajo: se avisa y
+    el siguiente pase lo arrastra."""
+    r = subprocess.run(["git", "push", "-q", "origin", "HEAD"], cwd=repo_dir, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"push fallido (no bloqueante, el commit está en local): {r.stderr.strip()}", file=sys.stderr)
+        return False
+    return True
+
+
+def url_commit(repo_dir: Path, sha: str) -> str:
+    """URL pública del commit, para que el /log enlace a la prueba real de lo
+    que hizo el agente. Si no hay remoto configurado, se cae al identificador
+    local en vez de inventar una URL que daría 404."""
+    r = subprocess.run(
+        ["git", "remote", "get-url", "origin"], cwd=repo_dir, capture_output=True, text=True
+    )
+    remoto = r.stdout.strip()
+    if r.returncode != 0 or not remoto:
+        return f"local-commit:{sha}"
+    if remoto.startswith("git@github.com:"):
+        remoto = "https://github.com/" + remoto[len("git@github.com:"):]
+    return f"{remoto.removesuffix('.git')}/commit/{sha}"
+
+
 def _config_agente(ia: str) -> dict:
     with open(DASHBOARD_DIR / "config.json", encoding="utf-8") as fh:
         cfg = json.load(fh)
@@ -252,6 +278,9 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             "detalle_error": f"bloqueado por guardarraíles: {detalle}",
         })
         git_commit(repo_dir, "log: registra intento bloqueado por guardarraíles")
+        # Los bloqueos también se publican: enseñar dónde se equivoca cada IA
+        # es parte de la transparencia, no algo que esconder.
+        git_push(repo_dir)
         return
 
     for destino, contenido in destinos:
@@ -273,7 +302,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         "razonamiento": razonamiento,
         "accion_tipo": datos.get("accion_tipo"),
         "output_resumen": datos.get("output_resumen"),
-        "output_url": f"local-commit:{commit_hash}",  # placeholder hasta que haya repo remoto/deploy real
+        "output_url": url_commit(repo_dir, commit_hash),
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],
         "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
@@ -283,6 +312,9 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     }
     registrar_evento(repo_dir, evento)
     git_commit(repo_dir, f"log: registra evento {evento['evento_id']}")
+    # Un solo push al final: sube el cambio y su entrada de log juntos, para
+    # que el repo público nunca muestre contenido sin su justificación.
+    git_push(repo_dir)
     print(f"[{ia}] commit {commit_hash}, evento registrado en log.json")
 
 

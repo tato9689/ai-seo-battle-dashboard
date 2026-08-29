@@ -22,13 +22,36 @@ def cargar_config():
         return json.load(fh)
 
 
+def _aware(dt: datetime) -> datetime:
+    """Una fecha sin zona horaria ('2026-10-05', el formato natural que se
+    escribe a mano en config.json) no se puede comparar con un timestamp con
+    zona: Python lanza TypeError. Se asume UTC, que es la zona en la que los
+    agentes escriben sus timestamps."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def derivar_fase(timestamp_iso: str, checkpoint_iso: str) -> int:
     try:
-        ts = datetime.fromisoformat(timestamp_iso.replace("Z", "+00:00"))
-        checkpoint = datetime.fromisoformat(checkpoint_iso.replace("Z", "+00:00"))
+        ts = _aware(datetime.fromisoformat(timestamp_iso.replace("Z", "+00:00")))
+        checkpoint = _aware(datetime.fromisoformat(checkpoint_iso.replace("Z", "+00:00")))
         return 2 if ts >= checkpoint else 1
-    except ValueError:
+    except (ValueError, TypeError):
+        # Caer a fase 1 es lo seguro (nunca abre el acceso competitivo por
+        # accidente), pero hacerlo en silencio significaría que un
+        # checkpoint_fase2 sin poner deja el experimento entero en fase 1 para
+        # siempre sin que nadie se entere. Se avisa una vez por proceso.
+        global _AVISADO_CHECKPOINT
+        if not _AVISADO_CHECKPOINT:
+            _AVISADO_CHECKPOINT = True
+            print(
+                f"AVISO: checkpoint_fase2 = {checkpoint_iso!r} no es una fecha válida. "
+                "Todo se registrará como fase 1 hasta que se ponga la fecha real en config.json.",
+                file=sys.stderr,
+            )
         return 1
+
+
+_AVISADO_CHECKPOINT = False
 
 
 def _avisar(texto: str):

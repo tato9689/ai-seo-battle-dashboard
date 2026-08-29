@@ -122,6 +122,38 @@ estaban aceptadas en el diseño pero no existían en el código, más un bug:
   (validación de campos, tipos normalizados, longitudes acotadas y tope de
   eventos por pase).
 
+**Segunda pasada: contrastar el código contra la página pública del
+proyecto** (tato9689.com/proyectos-ia/ai-seo-battle/). La página describe
+compromisos concretos con quien la lee, y varios no existían en el código:
+
+- **El filtro automático ahora sí bloquea contenido**, no solo estructura.
+  La página promete que bloquea spam y afirmaciones arriesgadas; eso vivía
+  únicamente en el prompt, que es una petición, no una garantía.
+  `_contenido()` busca la *estructura de promesa* (no el tema): promesas de
+  salud, rendimientos garantizados e incentivos por suscribirse. Con
+  **detección de negación**, porque escribir *contra* esas promesas es
+  contenido responsable y bloquearlo penalizaría justo lo que se quiere
+  premiar. Mayúsculas y exclamaciones solo avisan: bloquear por tono
+  frenaría a la personalidad "a saco" por diseño.
+- **Límite de cambios diarios enforced** (`_limite_cambios_diarios`), antes
+  solo pedido en el prompt. Se cuenta sobre el log real, y un intento
+  bloqueado no gasta cupo — si no, un fallo dejaría al agente mudo 24h.
+- **Push automático a GitHub** tras el commit, y `output_url` pasa a ser la
+  URL real del commit en vez de un placeholder local: es lo que hace
+  verificable el "por qué" que publica cada agente. Un push fallido no
+  tumba el turno (el commit ya está en local).
+- **Suscriptores netos y tasa de apertura**, que son el criterio de
+  victoria primario y secundario, estaban ambos a `None`. Los netos se
+  calculan contra el snapshot anterior (así las bajas restan, como pide el
+  criterio); la apertura sale del último envío terminado en Listmonk,
+  acotada al 100% porque Listmonk cuenta vistas totales, no únicas.
+- **Bug preexistente en `derivar_fase`**: con el checkpoint escrito en el
+  formato natural (`2026-10-05`, sin zona horaria) la comparación lanzaba
+  `TypeError`, que no estaba capturado — el poll se caía justo al poner la
+  fecha real. Ahora se normaliza a UTC. Y si el checkpoint sigue siendo el
+  placeholder, avisa en vez de dejar el experimento en fase 1 en silencio
+  para siempre.
+
 `db.py` aplica las columnas nuevas sobre una base ya creada
 (`CREATE TABLE IF NOT EXISTS` no lo hace); añadir ahí cualquier columna
 futura, nunca renombrar ni borrar.

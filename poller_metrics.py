@@ -94,13 +94,40 @@ def datos_listmonk(base_url: str, token: str, list_id) -> dict:
 
     salida = {
         "suscriptores_totales": data.get("subscriber_count"),
-        # netos_dia y tasa_apertura del último envío requieren el endpoint de
-        # campaigns; se deja a None hasta que Listmonk esté montado de verdad.
+        # netos_dia lo calcula poll_ia contra el snapshot del día anterior:
+        # Listmonk da el total vivo, no la variación.
         "suscriptores_netos_dia": None,
-        "tasa_apertura_ultimo_envio": None,
+        "tasa_apertura_ultimo_envio": _tasa_apertura(base_url, token, list_id),
     }
     salida.update(_desglose_origen(base_url, token, list_id))
     return salida
+
+
+def _tasa_apertura(base_url: str, token: str, list_id) -> float | None:
+    """% de apertura del último envío terminado de esa lista. Es la métrica
+    secundaria de calidad del experimento (un suscriptor que nunca abre no
+    vale lo mismo que uno que lee), así que no puede quedarse en None."""
+    try:
+        resp = httpx.get(
+            f"{base_url}/campaigns",
+            params={"list_id": list_id, "status": "finished", "per_page": 1, "order_by": "created_at", "order": "DESC"},
+            headers={"Authorization": f"token {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        resultados = resp.json()["data"].get("results") or []
+        if not resultados:
+            return None
+        campana = resultados[0]
+        enviados = campana.get("sent") or 0
+        if not enviados:
+            return None
+        # Listmonk cuenta vistas totales, no únicas: dos aperturas del mismo
+        # lector inflarían la tasa por encima de 100%, así que se acota.
+        return round(min(campana.get("views", 0) / enviados, 1.0) * 100, 2)
+    except Exception as e:
+        print(f"tasa de apertura no disponible: {e}", file=sys.stderr)
+        return None
 
 
 def _desglose_origen(base_url: str, token: str, list_id) -> dict:
@@ -179,6 +206,19 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
 
     if not fuentes_ok:
         return False
+
+    # Netos del día = variación real frente al último snapshot, no un contador
+    # de altas: así las bajas restan, que es justo lo que pide el criterio de
+    # victoria ("altas menos bajas", no volumen bruto).
+    if fila["suscriptores_totales"] is not None:
+        previo = conn.execute(
+            "SELECT suscriptores_totales FROM metrics_snapshot "
+            "WHERE ia = ? AND fecha < ? AND suscriptores_totales IS NOT NULL "
+            "ORDER BY fecha DESC LIMIT 1",
+            (ia, fecha),
+        ).fetchone()
+        if previo is not None:
+            fila["suscriptores_netos_dia"] = fila["suscriptores_totales"] - previo["suscriptores_totales"]
 
     ya_tenia_subs = conn.execute(
         "SELECT 1 FROM metrics_snapshot WHERE ia = ? AND suscriptores_totales > 0 LIMIT 1", (ia,)
