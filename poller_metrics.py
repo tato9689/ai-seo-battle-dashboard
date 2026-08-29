@@ -1,0 +1,184 @@
+"""Snapshot diario de métricas de RESULTADO por IA (no acciones, eso es poller.py).
+
+Responde a "cómo sabe que le va bien a una IA": tráfico (GA4 + Search
+Console del subdominio) y leads reales (suscriptores netos + tasa de
+apertura vía Listmonk). Mismo mecanismo de acceso que ya usa
+/root/tato9689-panel/metricas.py: service account de Google con
+analytics.readonly + webmasters.readonly.
+
+Pensado para cron diario (una fila por ia+fecha, upsert). Cada fuente falla
+de forma independiente y aislada: si Listmonk aún no existe o una property
+GA4 no está creada, esa fuente queda a None pero las demás se guardan igual.
+"""
+import json
+import sys
+from datetime import datetime, timezone, date, timedelta
+from pathlib import Path
+
+import httpx
+from google.oauth2 import service_account
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
+from googleapiclient.discovery import build
+
+from avisos import enviar as avisar_telegram
+from db import get_conn, init_db
+
+
+def _avisar(texto: str):
+    try:
+        avisar_telegram(texto)
+    except Exception as e:
+        print(f"aviso Telegram fallido (no bloqueante): {e}", file=sys.stderr)
+
+BASE = Path(__file__).parent
+CONFIG_PATH = BASE / "config.json"
+
+SCOPES = [
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/webmasters.readonly",
+]
+
+
+def cargar_config():
+    with open(CONFIG_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def credenciales(cred_path: str):
+    return service_account.Credentials.from_service_account_file(cred_path, scopes=SCOPES)
+
+
+def datos_ga4(creds, property_id: str) -> dict:
+    client = BetaAnalyticsDataClient(credentials=creds)
+    resp = client.run_report(RunReportRequest(
+        property=property_id,
+        date_ranges=[DateRange(start_date="yesterday", end_date="yesterday")],
+        metrics=[Metric(name="sessions"), Metric(name="activeUsers"), Metric(name="screenPageViews")],
+    ))
+    fila = resp.rows[0] if resp.rows else None
+    return {
+        "sesiones": int(fila.metric_values[0].value) if fila else 0,
+        "usuarios": int(fila.metric_values[1].value) if fila else 0,
+        "vistas": int(fila.metric_values[2].value) if fila else 0,
+    }
+
+
+def datos_gsc(creds, site_url: str) -> dict:
+    service = build("searchconsole", "v1", credentials=creds)
+    fin = date.today() - timedelta(days=3)  # GSC tarda en consolidar
+    inicio = fin - timedelta(days=1)
+    resp = service.searchanalytics().query(
+        siteUrl=site_url,
+        body={"startDate": inicio.isoformat(), "endDate": fin.isoformat()},
+    ).execute()
+    filas = resp.get("rows", [])
+    r = filas[0] if filas else {}
+    return {
+        "clics": int(r.get("clicks", 0)),
+        "impresiones": int(r.get("impressions", 0)),
+        "posicion_media": round(r.get("position", 0), 1),
+    }
+
+
+def datos_listmonk(base_url: str, token: str, list_id) -> dict:
+    if not list_id or "PENDIENTE" in base_url or "PENDIENTE" in token:
+        raise RuntimeError("Listmonk aún no configurado")
+    resp = httpx.get(
+        f"{base_url}/lists/{list_id}",
+        headers={"Authorization": f"token {token}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()["data"]
+    return {
+        "suscriptores_totales": data.get("subscriber_count"),
+        # netos_dia y tasa_apertura del último envío requieren el endpoint de
+        # campaigns; se deja a None hasta que Listmonk esté montado de verdad.
+        "suscriptores_netos_dia": None,
+        "tasa_apertura_ultimo_envio": None,
+    }
+
+
+def poll_ia(conn, cfg, agente: dict) -> bool:
+    ia = agente["ia"]
+    fecha = (date.today() - timedelta(days=1)).isoformat()
+    fila = {
+        "sesiones_ga4": None, "usuarios_ga4": None, "vistas_ga4": None,
+        "clics_gsc": None, "impresiones_gsc": None, "posicion_media_gsc": None,
+        "suscriptores_totales": None, "suscriptores_netos_dia": None,
+        "tasa_apertura_ultimo_envio": None,
+    }
+    fuentes_ok = []
+
+    try:
+        creds = credenciales(cfg["google_service_account"])
+        ga4 = datos_ga4(creds, agente["ga4_property"])
+        fila.update(sesiones_ga4=ga4["sesiones"], usuarios_ga4=ga4["usuarios"], vistas_ga4=ga4["vistas"])
+        fuentes_ok.append("ga4")
+    except Exception as e:
+        print(f"[{ia}] GA4 no disponible: {e}", file=sys.stderr)
+
+    try:
+        creds = credenciales(cfg["google_service_account"])
+        gsc = datos_gsc(creds, agente["gsc_site"])
+        fila.update(clics_gsc=gsc["clics"], impresiones_gsc=gsc["impresiones"], posicion_media_gsc=gsc["posicion_media"])
+        fuentes_ok.append("gsc")
+    except Exception as e:
+        print(f"[{ia}] GSC no disponible: {e}", file=sys.stderr)
+
+    try:
+        lm = datos_listmonk(cfg["listmonk_base_url"], cfg["listmonk_api_token"], agente["listmonk_list_id"])
+        fila.update(lm)
+        fuentes_ok.append("listmonk")
+    except Exception as e:
+        print(f"[{ia}] Listmonk no disponible: {e}", file=sys.stderr)
+
+    if not fuentes_ok:
+        return False
+
+    ya_tenia_subs = conn.execute(
+        "SELECT 1 FROM metrics_snapshot WHERE ia = ? AND suscriptores_totales > 0 LIMIT 1", (ia,)
+    ).fetchone() is not None
+    if not ya_tenia_subs and (fila["suscriptores_totales"] or 0) > 0:
+        _avisar(f"🎉 AI SEO Battle: {ia} consiguió su primer suscriptor ({fila['suscriptores_totales']} total)")
+
+    conn.execute(
+        """
+        INSERT INTO metrics_snapshot
+            (ia, fecha, sesiones_ga4, usuarios_ga4, vistas_ga4, clics_gsc, impresiones_gsc,
+             posicion_media_gsc, suscriptores_totales, suscriptores_netos_dia,
+             tasa_apertura_ultimo_envio, fuente, ingested_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ia, fecha) DO UPDATE SET
+            sesiones_ga4=excluded.sesiones_ga4, usuarios_ga4=excluded.usuarios_ga4,
+            vistas_ga4=excluded.vistas_ga4, clics_gsc=excluded.clics_gsc,
+            impresiones_gsc=excluded.impresiones_gsc, posicion_media_gsc=excluded.posicion_media_gsc,
+            suscriptores_totales=excluded.suscriptores_totales,
+            suscriptores_netos_dia=excluded.suscriptores_netos_dia,
+            tasa_apertura_ultimo_envio=excluded.tasa_apertura_ultimo_envio,
+            fuente=excluded.fuente, ingested_at=excluded.ingested_at
+        """,
+        (
+            ia, fecha, fila["sesiones_ga4"], fila["usuarios_ga4"], fila["vistas_ga4"],
+            fila["clics_gsc"], fila["impresiones_gsc"], fila["posicion_media_gsc"],
+            fila["suscriptores_totales"], fila["suscriptores_netos_dia"],
+            fila["tasa_apertura_ultimo_envio"], "+".join(fuentes_ok),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    return True
+
+
+def main():
+    init_db()
+    cfg = cargar_config()
+    conn = get_conn()
+    ok = sum(poll_ia(conn, cfg, agente) for agente in cfg["agentes"])
+    conn.commit()
+    conn.close()
+    print(f"metrics snapshot: {ok}/{len(cfg['agentes'])} IAs con al menos una fuente")
+
+
+if __name__ == "__main__":
+    main()

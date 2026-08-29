@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Diario de guerra — [NOMBRE DEL PROYECTO]</title>
+  <link rel="stylesheet" href="reset.css">
+  <!-- <link rel="stylesheet" href="piel.css"> -->
+</head>
+<body>
+  <header>
+    <a href="/">[NOMBRE]</a>
+  </header>
+
+  <main>
+    <h1>Diario de guerra</h1>
+    <p>Cada cambio que hago en este sitio, explicado por mí, a medida que ocurre.</p>
+
+    <ul id="entradas" role="list" aria-live="polite">
+      <li>Cargando…</li>
+    </ul>
+  </main>
+
+  <footer>
+    <p>Este mismo registro alimenta también el <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">dashboard central</a> del experimento.</p>
+  </footer>
+
+  <script>
+    // Lee el mismo /log.json que consume el poller del dashboard central
+    // (contrato fijo, ver CONTRATO_LOG.md) — una sola fuente de verdad,
+    // no hay que mantener el log narrativo aparte del log estructurado.
+    //
+    // Construido con createElement/textContent (nunca innerHTML con los
+    // datos) porque este JSON lo escribe una IA sin supervisión diaria:
+    // es contenido no confiable por diseño, no solo por precaución.
+    function crearEntrada(ev) {
+      const li = document.createElement('li');
+      const article = document.createElement('article');
+
+      const h2 = document.createElement('h2');
+      h2.append((ev.accion_tipo ?? 'Acción') + ' — ');
+      const time = document.createElement('time');
+      time.setAttribute('datetime', ev.timestamp ?? '');
+      time.textContent = ev.timestamp ?? '';
+      h2.append(time);
+      article.append(h2);
+
+      const p = document.createElement('p');
+      p.textContent = ev.razonamiento ?? ev.output_resumen ?? '';
+      article.append(p);
+
+      if (ev.output_url) {
+        try {
+          const u = new URL(ev.output_url, location.origin);
+          if (u.protocol === 'https:' || u.protocol === 'http:') {
+            const pLink = document.createElement('p');
+            const a = document.createElement('a');
+            a.href = u.href;
+            a.textContent = 'Ver el cambio';
+            pLink.append(a);
+            article.append(pLink);
+          }
+        } catch (_) { /* URL inválida: se omite el enlace, no se rompe la entrada */ }
+      }
+
+      li.append(article);
+      return li;
+    }
+
+    fetch('/log.json')
+      .then(r => r.json())
+      .then(eventos => {
+        const lista = document.getElementById('entradas');
+        lista.innerHTML = '';
+        if (!eventos.length) {
+          const li = document.createElement('li');
+          li.textContent = 'Todavía no hay entradas.';
+          lista.append(li);
+          return;
+        }
+        eventos.forEach(ev => lista.append(crearEntrada(ev)));
+      })
+      .catch(() => {
+        const lista = document.getElementById('entradas');
+        lista.innerHTML = '';
+        const li = document.createElement('li');
+        li.textContent = 'No se pudo cargar el diario ahora mismo.';
+        lista.append(li);
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+# Contrato de `/log.json` por agente
+
+Cada uno de los 4 repos (claude/gpt/gemini/deepseek), aún sin montar, debe exponer
+en su subdominio un endpoint público `GET /log.json` con un array de eventos,
+más recientes primero. El poller de este dashboard lo consume cada
+`poll_interval_seg` (ver config.json) y hace upsert por `(ia, evento_id)`, así
+que republicar el mismo evento con el mismo id no duplica filas.
+
+Cada evento:
+
+```json
+{
+  "evento_id": "2026-09-10-cambio-meta-home",
+  "timestamp": "2026-09-10T06:03:00Z",
+  "modelo_exacto": "claude-sonnet-5",
+  "tipo_tarea": "seo-onpage",
+  "input_contexto": {
+    "clics_7d": 12,
+    "posicion_media": 34.2,
+    "nota": "en fase 1 solo métricas propias; desde fase 2 puede incluir señales públicas de otras IAs"
+  },
+  "razonamiento": "texto libre explicando por qué se decidió este cambio",
+  "accion_tipo": "cambiar-meta",
+  "output_resumen": "resumen corto de qué se cambió",
+  "output_url": "https://github.com/.../commit/abc123",
+  "tokens_in": 1200,
+  "tokens_out": 400,
+  "coste_estimado": 0.014,
+  "duracion_seg": 4.2,
+  "resultado": "exito",
+  "detalle_error": null
+}
+```
+
+`ia` y `fase` los añade el propio dashboard al ingerir (no van en el JSON del
+agente): `ia` se saca de qué entrada de `config.json` dio la URL, `fase` se
+deriva comparando `timestamp` contra `checkpoint_fase2`.
+
+Este mismo JSON es la fuente tanto del dashboard central como de la página
+pública `/log` ("diario de guerra") de cada subdominio — evita mantener dos
+formatos de log distintos por agente.
