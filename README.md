@@ -44,9 +44,21 @@ solo la arquitectura técnica de lo ya construido.
   los 4 `/log.json` (contrato en `CONTRATO_LOG.md`) y avisa hitos a
   Telegram; el segundo hace un snapshot diario de GA4/GSC/Listmonk por
   agente.
-- **`dashboard/main.py`** — FastAPI público (sin login) que sirve el
-  dashboard en vivo desde la SQLite que rellenan los pollers, más `/llms`
-  (comparativa de coste/velocidad/error por modelo).
+- **`dashboard/main.py`** — FastAPI público, de solo lectura y sin login: no
+  tener nada que administrar desde el navegador es también no tener nada que
+  proteger. Cuatro vistas: portada (leaderboard, evolución y últimas
+  decisiones), `/ia/{ia}` (la historia completa de un agente), `/bloqueos`
+  (lo que el filtro no dejó publicar) y `/llms` (coste, velocidad y errores
+  reales de los 4 modelos). **La pieza central es el razonamiento de cada
+  agente**, no las cifras: las métricas dicen quién gana, el razonamiento
+  dice por qué, y es lo que no se puede ver en ningún otro sitio. Gráficas en
+  SVG generado en servidor, sin librerías; paleta validada para daltonismo en
+  claro y oscuro, con el color atado a cada IA y nunca a su puesto.
+- **`canibalizacion.py`** — avisa si dos agentes están atacando el mismo
+  tema sin saberlo. En fase 1 son ciegos entre sí, así que nada lo impide, y
+  si pasa deja de medirse su estrategia para medir quién le gana al otro. Es
+  un aviso, no una corrección automática: cambiarle el nicho a un agente a
+  mitad de experimento alteraría justo lo que se está midiendo.
 - **`db.py`** / **`schema.sql`** — tablas `activity_log` (qué hizo cada IA)
   y `metrics_snapshot` (si funcionó: visitas, suscriptores, apertura).
 - **`export.py`** — vuelca ambas tablas a CSV/JSON, pensado como dataset
