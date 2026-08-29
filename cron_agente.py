@@ -47,7 +47,7 @@ PRECIOS_APROX_POR_M_TOKENS = {
     "claude-haiku-4-5-20251001": (0.25, 1.5),  # TODO: verificar al alta
     "gpt-5.2": (1.75, 14.0),
     "gpt-5.2-mini": (0.3, 2.5),  # TODO: verificar al alta
-    "gemini-3-flash": (0.5, 3.0),
+    "gemini-3.7-flash": (0.5, 3.0),
     "deepseek-chat": (0.15, 0.3),  # TODO: verificar al alta
     "deepseek-reasoner": (0.6, 2.2),  # TODO: verificar al alta
 }
@@ -121,6 +121,16 @@ def razonamiento_sin_json(texto: str) -> str:
     return re.sub(r"```json.*?```", "", texto, flags=re.DOTALL).strip()
 
 
+def ruta_segura(repo_dir: Path, ruta_relativa: str) -> Path:
+    """La ruta de cada archivo viene del JSON que genera la propia IA — nunca
+    confiar en ella sin comprobar que sigue dentro de repo_dir. Bloquea rutas
+    absolutas y cualquier '../' que intente escapar del repo del agente."""
+    destino = (repo_dir / ruta_relativa).resolve()
+    if destino != repo_dir.resolve() and repo_dir.resolve() not in destino.parents:
+        raise ValueError(f"ruta fuera del repo del agente, rechazada: {ruta_relativa!r}")
+    return destino
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -172,8 +182,16 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         print(json.dumps(datos, ensure_ascii=False, indent=2))
         return
 
-    for archivo in datos.get("archivos", []):
-        (repo_dir / archivo["ruta"]).write_text(archivo["contenido_completo"], encoding="utf-8")
+    archivos = datos.get("archivos", [])
+    try:
+        destinos = [(ruta_segura(repo_dir, a["ruta"]), a["contenido_completo"]) for a in archivos]
+    except ValueError as e:
+        print(f"[{ia}] {e} — no se aplica ningún cambio de este turno.", file=sys.stderr)
+        return
+
+    for destino, contenido in destinos:
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(contenido, encoding="utf-8")
 
     commit_hash = git_commit(repo_dir, f"{datos.get('accion_tipo', 'cambio')}: {datos.get('output_resumen', '')}")
 
