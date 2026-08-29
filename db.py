@@ -21,6 +21,9 @@ MIGRACIONES = {
         ("suscriptores_meta", "INTEGER"),
         ("suscriptores_directos", "INTEGER"),
     ],
+    "activity_log": [
+        ("cambios", "TEXT"),
+    ],
 }
 
 

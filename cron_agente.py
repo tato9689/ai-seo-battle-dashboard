@@ -40,6 +40,7 @@ from clientes import llamar_con_metadata  # noqa: E402
 from db import get_conn  # noqa: E402
 import guardarrailes  # noqa: E402
 import generar_feeds  # noqa: E402
+import portada  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
@@ -136,6 +137,34 @@ def ruta_segura(repo_dir: Path, ruta_relativa: str) -> Path:
     return destino
 
 
+def registrar_urls_publicadas(ia: str, base_url: str, archivos_nuevos: dict):
+    """Apunta la fecha de publicación de cada página nueva, para poder medir
+    después cuánto tarda Google en indexarla. Se hace aquí y no en el poller
+    porque solo aquí se sabe el día exacto en que la página nació.
+
+    `INSERT OR IGNORE`: reeditar una página no reinicia su reloj de
+    indexación, que mide desde la primera publicación."""
+    if not base_url or "PENDIENTE" in base_url:
+        return
+    try:
+        conn = get_conn()
+        hoy = date.today().isoformat()
+        for rel in archivos_nuevos:
+            if not rel.endswith(".html"):
+                continue
+            url = generar_feeds._url_publica(base_url, rel)
+            conn.execute(
+                "INSERT OR IGNORE INTO indexacion (ia, url, fecha_publicacion) VALUES (?, ?, ?)",
+                (ia, url, hoy),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # El seguimiento de indexación es un extra: no puede costarle al
+        # agente el turno que ya ha commiteado correctamente.
+        print(f"no se pudo registrar la indexación: {e}", file=sys.stderr)
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -160,6 +189,34 @@ def git_push(repo_dir: Path) -> bool:
         print(f"push fallido (no bloqueante, el commit está en local): {r.stderr.strip()}", file=sys.stderr)
         return False
     return True
+
+
+def resumen_cambios(repo_dir: Path, sha: str) -> list[dict]:
+    """[{archivo, añadidas, quitadas}] del commit. Poder ver *qué* cambió al
+    lado del *por qué* es lo que convierte el log en algo que se explora; el
+    enlace al commit da el diff completo, esto da el vistazo rápido sin salir
+    del dashboard. Los archivos que genera el sistema (portadas, feeds) se
+    excluyen: no son decisiones del agente y ensucian el resumen."""
+    r = subprocess.run(
+        ["git", "show", "--numstat", "--format=", sha], cwd=repo_dir, capture_output=True, text=True
+    )
+    if r.returncode != 0:
+        return []
+    cambios = []
+    for linea in r.stdout.strip().splitlines():
+        partes = linea.split("\t")
+        if len(partes) != 3:
+            continue
+        añadidas, quitadas, archivo = partes
+        if archivo.startswith("og/") or archivo in {"sitemap.xml", "rss.xml", "log.json"}:
+            continue
+        cambios.append({
+            "archivo": archivo,
+            # "-" en un binario; se guarda como None en vez de romper.
+            "anadidas": int(añadidas) if añadidas.isdigit() else None,
+            "quitadas": int(quitadas) if quitadas.isdigit() else None,
+        })
+    return cambios
 
 
 def url_commit(repo_dir: Path, sha: str) -> str:
@@ -287,11 +344,15 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(contenido, encoding="utf-8")
 
-    # Feeds regenerados aquí y no por la IA: es XML mecánico, sale gratis y
-    # siempre correcto, y viaja en el mismo commit que el contenido.
-    generar_feeds.escribir_feeds(repo_dir, base_url_agente(ia))
+    base_url = base_url_agente(ia)
+    # Portadas y feeds los genera el sistema, no la IA: es trabajo mecánico
+    # que sale gratis, siempre correcto, y viaja en el mismo commit que el
+    # contenido al que pertenece.
+    portada.escribir_para(repo_dir, list(archivos_nuevos), ia, base_url)
+    generar_feeds.escribir_feeds(repo_dir, base_url)
 
     commit_hash = git_commit(repo_dir, f"{datos.get('accion_tipo', 'cambio')}: {datos.get('output_resumen', '')}")
+    cambios = resumen_cambios(repo_dir, commit_hash)
 
     evento = {
         "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
@@ -303,6 +364,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         "accion_tipo": datos.get("accion_tipo"),
         "output_resumen": datos.get("output_resumen"),
         "output_url": url_commit(repo_dir, commit_hash),
+        "cambios": cambios,
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],
         "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
@@ -310,6 +372,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         "resultado": "exito",
         "detalle_error": None,
     }
+    registrar_urls_publicadas(ia, base_url, archivos_nuevos)
     registrar_evento(repo_dir, evento)
     git_commit(repo_dir, f"log: registra evento {evento['evento_id']}")
     # Un solo push al final: sube el cambio y su entrada de log juntos, para

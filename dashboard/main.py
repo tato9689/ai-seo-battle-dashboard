@@ -133,6 +133,8 @@ ESTILO = """
   .dec-razon { margin: 8px 0 0; color: var(--text-2); font-size: .88rem; white-space: pre-wrap; }
   details.razon > summary { cursor: pointer; color: var(--s1); font-size: .82rem; margin-top: 8px; }
   details.razon[open] > summary { margin-bottom: 2px; }
+  .dec-cambios { margin: 8px 0 0; font-size: .78rem; color: var(--text-3); }
+  .dec-cambios code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .95em; color: var(--text-2); }
   .dec-pie { margin-top: 10px; font-size: .76rem; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .dec.bloq { border-color: color-mix(in oklab, var(--error) 45%, var(--border)); }
   .motivo { margin: 8px 0 0; color: var(--error); font-size: .84rem; }
@@ -288,6 +290,25 @@ def tarjeta_decision(ev, mostrar_ia: bool = True, bloqueada: bool = False) -> st
                 f'<p class="dec-razon">{esc(razon)}</p></details>'
             )
 
+    # Qué archivos tocó y cuánto: el "qué" al lado del "por qué". El enlace al
+    # commit da el diff entero; esto da el vistazo sin salir de la página.
+    try:
+        cambios = json.loads(ev["cambios"]) if ev["cambios"] else []
+    except (json.JSONDecodeError, TypeError, IndexError):
+        cambios = []
+    if cambios:
+        trozos = []
+        for c in cambios[:4]:
+            delta = []
+            if c.get("anadidas"):
+                delta.append(f'+{c["anadidas"]}')
+            if c.get("quitadas"):
+                delta.append(f'−{c["quitadas"]}')
+            trozos.append(f'<code>{esc(str(c.get("archivo", "?")))}</code> {" ".join(delta)}'.strip())
+        if len(cambios) > 4:
+            trozos.append(f"y {len(cambios)-4} más")
+        partes.append(f'<p class="dec-cambios">{" · ".join(trozos)}</p>')
+
     pie = []
     if ev["modelo_exacto"]:
         pie.append(esc(ev["modelo_exacto"]))
@@ -347,6 +368,12 @@ def home():
     dias = conn.execute("SELECT COUNT(DISTINCT fecha) d FROM metrics_snapshot").fetchone()["d"]
     n_bloqueos = conn.execute(
         "SELECT COUNT(*) n FROM activity_log WHERE resultado='error'").fetchone()["n"]
+    indexacion = conn.execute(
+        "SELECT ia, COUNT(*) publicadas,"
+        " SUM(CASE WHEN primera_impresion IS NOT NULL THEN 1 ELSE 0 END) indexadas,"
+        " AVG(dias_hasta_indexar) media"
+        " FROM indexacion GROUP BY ia"
+    ).fetchall()
     conn.close()
 
     filas = _leaderboard_filas(agregados, ultimos)
@@ -410,6 +437,25 @@ def home():
                  f'resultados dejan de medir solo su estrategia y empiezan a medir quién le gana al otro.</p>'
                  f'<ul>{detalle}</ul></div>')
 
+    # Cuánto tarda Google en indexar lo de cada una. Ninguna herramienta de
+    # SEO contesta esto porque haría falta saber el día exacto de publicación,
+    # y aquí se sabe: lo apunta el propio cron al commitear.
+    if indexacion:
+        idx_filas = "".join(
+            f'<tr><td><span class="tag"><span class="chip" style="background:{color(r["ia"])}"></span>'
+            f'{esc(etiqueta(r["ia"]))}</span></td><td>{r["publicadas"]}</td><td>{r["indexadas"] or 0}</td>'
+            f'<td>{f"{r['media']:.1f} días" if r["media"] is not None else "—"}</td></tr>'
+            for r in sorted(indexacion, key=lambda r: ORDEN_IA.index(r["ia"]) if r["ia"] in ORDEN_IA else 9)
+        )
+        bloque_idx = f"""<h2>Cuánto tarda Google en indexarlas</h2>
+<p class="hint">Desde que la IA publica una página hasta que aparece por primera vez en resultados de
+búsqueda. Es un dato que casi nadie mide, porque hace falta saber el día exacto de publicación —
+aquí lo apunta el propio sistema al guardar el cambio.</p>
+<div class="scroll"><table><tr><th>IA</th><th>Páginas publicadas</th><th>Ya indexadas</th>
+<th>Tarda de media</th></tr>{idx_filas}</table></div>"""
+    else:
+        bloque_idx = ""
+
     feed = "".join(tarjeta_decision(ev) for ev in decisiones) if decisiones else vacio(
         "Todavía no ha actuado ninguna IA. En cuanto arranquen los crons diarios, cada decisión aparece aquí con su porqué.")
 
@@ -436,6 +482,8 @@ gana quien convence barato, no quien más publica.</p>
 <h2>Evolución: clics desde Google</h2>
 <p class="hint">El escalón previo. Un dominio nuevo tarda semanas en tener clics, y más en convertirlos.</p>
 {grafica_lineas(serie("clics_gsc"), "Clics en Search Console")}
+
+{bloque_idx}
 
 <h2>Últimas decisiones</h2>
 <p class="hint">Cada cambio, con el razonamiento que lo justificó. Sin editar.</p>

@@ -128,9 +128,9 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
             """
             INSERT INTO activity_log
                 (ia, subdominio, evento_id, timestamp, modelo_exacto, tipo_tarea,
-                 input_contexto, razonamiento, accion_tipo, output_resumen, output_url,
+                 input_contexto, razonamiento, accion_tipo, output_resumen, output_url, cambios,
                  tokens_in, tokens_out, coste_estimado, duracion_seg, resultado, detalle_error, fase, ingested_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ia, evento_id) DO NOTHING
             """,
             (
@@ -138,7 +138,9 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
                 _texto(ev.get("modelo_exacto"), 100),
                 _texto(ev.get("tipo_tarea"), 100), json.dumps(ev.get("input_contexto"), ensure_ascii=False)[:MAX_LARGO_TEXTO],
                 _texto(ev.get("razonamiento")), _texto(ev.get("accion_tipo"), 100), _texto(ev.get("output_resumen"), 2000),
-                _texto(ev.get("output_url"), 500), _numero(ev.get("tokens_in")), _numero(ev.get("tokens_out")),
+                _texto(ev.get("output_url"), 500),
+                json.dumps(ev.get("cambios"), ensure_ascii=False)[:4000] if ev.get("cambios") else None,
+                _numero(ev.get("tokens_in")), _numero(ev.get("tokens_out")),
                 _numero(ev.get("coste_estimado")), _numero(ev.get("duracion_seg")),
                 _texto(ev.get("resultado"), 20), _texto(ev.get("detalle_error"), 2000),
                 fase, ahora,

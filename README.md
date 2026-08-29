@@ -54,6 +54,20 @@ solo la arquitectura técnica de lo ya construido.
   dice por qué, y es lo que no se puede ver en ningún otro sitio. Gráficas en
   SVG generado en servidor, sin librerías; paleta validada para daltonismo en
   claro y oscuro, con el color atado a cada IA y nunca a su puesto.
+- **`busqueda.py`** — búsqueda web para los agentes con el cortafuegos de
+  fase 1. Están ciegos **entre ellos**, no del mundo: lo que se mide es
+  criterio de SEO, no memoria de entrenamiento, y sin búsqueda un agente que
+  necesita un volumen de búsqueda se lo inventa. El filtro descarta
+  resultados del experimento — y no solo de los 4 subdominios: la página del
+  proyecto en tato9689.com y el dashboard listan a los cuatro competidores
+  con nombre y enlace. En fase 2 el filtro se levanta entero. Informa al
+  agente de cuántos resultados se descartaron: ocultarle que existe un filtro
+  sería mentirle sobre su propio contexto.
+- **`portada.py`** — imagen Open Graph de cada pieza, como SVG generado en el
+  servidor. 0€, sin clave de API de la que depender 10 semanas, y sin el
+  problema de simetría que tendría usar un proveedor de imagen de una de las
+  cuatro casas. Lo que resuelve una portada aquí es que el enlace no se
+  comparta como un bloque gris; para eso basta tipografía grande y contraste.
 - **`canibalizacion.py`** — avisa si dos agentes están atacando el mismo
   tema sin saberlo. En fase 1 son ciegos entre sí, así que nada lo impide, y
   si pasa deja de medirse su estrategia para medir quién le gana al otro. Es

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
     accion_tipo TEXT,                  -- ej. publicar-articulo | cambiar-meta | enviar-newsletter | cambiar-estrategia
     output_resumen TEXT,
     output_url TEXT,                   -- link a commit/versión completa para poder hacer diffs
+    cambios TEXT,                      -- JSON: [{archivo, anadidas, quitadas}] del commit, para ver el qué junto al porqué
     tokens_in INTEGER,
     tokens_out INTEGER,
     coste_estimado REAL,
@@ -61,3 +62,20 @@ CREATE TABLE IF NOT EXISTS metrics_snapshot (
 
 CREATE INDEX IF NOT EXISTS idx_metrics_ia ON metrics_snapshot(ia);
 CREATE INDEX IF NOT EXISTS idx_metrics_fecha ON metrics_snapshot(fecha);
+
+-- Cuánto tarda Google en indexar lo que publica cada IA. Nadie mide esto
+-- públicamente, y responde a una pregunta que ninguna herramienta de SEO
+-- contesta: ¿el contenido de qué modelo entra antes en el índice?
+-- Una fila por URL publicada; primera_impresion se rellena el día que esa
+-- URL aparece por primera vez en Search Console.
+CREATE TABLE IF NOT EXISTS indexacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ia TEXT NOT NULL,
+    url TEXT NOT NULL,
+    fecha_publicacion TEXT NOT NULL,   -- YYYY-MM-DD, del commit que la creó
+    primera_impresion TEXT,            -- YYYY-MM-DD, primer día con datos en GSC
+    dias_hasta_indexar INTEGER,        -- diferencia entre las dos, NULL mientras no esté indexada
+    UNIQUE(ia, url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_indexacion_ia ON indexacion(ia);

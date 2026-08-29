@@ -23,6 +23,9 @@ Cada evento:
   "accion_tipo": "cambiar-meta",
   "output_resumen": "resumen corto de qué se cambió",
   "output_url": "https://github.com/.../commit/abc123",
+  "cambios": [
+    {"archivo": "index.html", "anadidas": 14, "quitadas": 6}
+  ],
   "tokens_in": 1200,
   "tokens_out": 400,
   "coste_estimado": 0.014,
@@ -31,6 +34,11 @@ Cada evento:
   "detalle_error": null
 }
 ```
+
+`cambios` es opcional y lo rellena el script de cron con `git show --numstat`
+del commit, excluyendo lo que genera el sistema (portadas, feeds, el propio
+log). Sirve para enseñar *qué* cambió al lado del *por qué* sin salir del
+dashboard; el enlace de `output_url` sigue dando el diff completo.
 
 `ia` y `fase` los añade el propio dashboard al ingerir (no van en el JSON del
 agente): `ia` se saca de qué entrada de `config.json` dio la URL, `fase` se

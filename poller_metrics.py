@@ -81,6 +81,47 @@ def datos_gsc(creds, site_url: str) -> dict:
     }
 
 
+def urls_con_impresiones(creds, site_url: str, dias: int = 30) -> set[str]:
+    """URLs del sitio que ya han aparecido alguna vez en resultados. Es la
+    señal de indexación más fiable que da la API: 'aparece en búsquedas'
+    implica indexada, mientras que la Inspection API tiene una cuota diaria
+    muy baja y no serviría para vigilar 4 sitios a diario."""
+    service = build("searchconsole", "v1", credentials=creds)
+    fin = date.today() - timedelta(days=3)
+    resp = service.searchanalytics().query(
+        siteUrl=site_url,
+        body={
+            "startDate": (fin - timedelta(days=dias)).isoformat(),
+            "endDate": fin.isoformat(),
+            "dimensions": ["page"],
+            "rowLimit": 500,
+        },
+    ).execute()
+    return {r["keys"][0] for r in resp.get("rows", []) if r.get("keys")}
+
+
+def registrar_indexacion(conn, ia: str, creds, site_url: str):
+    """Marca la fecha en que cada URL publicada aparece por primera vez en
+    Search Console. Solo escribe la primera vez: 'cuándo se indexó' es un
+    hecho que no cambia, y sobrescribirlo perdería el dato."""
+    pendientes = conn.execute(
+        "SELECT url FROM indexacion WHERE ia = ? AND primera_impresion IS NULL", (ia,)
+    ).fetchall()
+    if not pendientes:
+        return
+    vistas = urls_con_impresiones(creds, site_url)
+    hoy = date.today().isoformat()
+    for fila in pendientes:
+        if fila["url"] not in vistas:
+            continue
+        conn.execute(
+            "UPDATE indexacion SET primera_impresion = ?,"
+            " dias_hasta_indexar = CAST(julianday(?) - julianday(fecha_publicacion) AS INTEGER)"
+            " WHERE ia = ? AND url = ? AND primera_impresion IS NULL",
+            (hoy, hoy, ia, fila["url"]),
+        )
+
+
 def datos_listmonk(base_url: str, token: str, list_id) -> dict:
     if not list_id or "PENDIENTE" in base_url or "PENDIENTE" in token:
         raise RuntimeError("Listmonk aún no configurado")
@@ -194,6 +235,12 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
         gsc = datos_gsc(creds, agente["gsc_site"])
         fila.update(clics_gsc=gsc["clics"], impresiones_gsc=gsc["impresiones"], posicion_media_gsc=gsc["posicion_media"])
         fuentes_ok.append("gsc")
+        try:
+            registrar_indexacion(conn, ia, creds, agente["gsc_site"])
+        except Exception as e:
+            # Va en su propio try: que falle el seguimiento de indexación no
+            # debe costarle al agente su snapshot de métricas del día.
+            print(f"[{ia}] seguimiento de indexación no disponible: {e}", file=sys.stderr)
     except Exception as e:
         print(f"[{ia}] GSC no disponible: {e}", file=sys.stderr)
 
