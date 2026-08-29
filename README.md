@@ -23,6 +23,9 @@ solo la arquitectura técnica de lo ya construido.
   `personalidad_<ia>.md`), llama a la API, parsea el JSON de salida, escribe
   y commitea en el repo del agente, y registra el evento con datos reales
   (tokens, coste, duración) — nunca inventados por el propio modelo.
+- **`guardarrailes.py`** — filtro automático de checks deterministas
+  (enlaces rotos, duplicación, canibalización, metadatos, JSON-LD) que
+  corre antes de que `cron_agente.py` escriba o commitee nada.
 - **`prompts-sistema/`** — `base_comun.md` (reglas, guardarraíles, fases 1/2,
   formato de salida) compartido por las 4, más un `personalidad_<ia>.md` por
   agente.
@@ -47,27 +50,50 @@ solo la arquitectura técnica de lo ya construido.
 
 ## Estado (2026-08-29)
 
-Las 4 API keys están dadas de alta y verificadas con llamadas reales. Este
-repo y los 4 `aisb-*` tienen ya primer commit, GDPR real (checkbox +
-plantilla de privacidad) y el path-traversal de `cron_agente.py` corregido
-(`ruta_segura()`, valida todo el batch de archivos antes de escribir
-ninguno). Todo lo demás sigue probado solo contra placeholders en
-`config.json` (`PENDIENTE-DOMINIO`) hasta comprar el dominio real.
+Las 4 API keys están dadas de alta y verificadas con llamadas reales (la de
+Gemini rotada el mismo día tras filtrarse en un traceback — ver
+`_llamar_gemini_meta`, ahora pasa la key por header, no por query param).
+Este repo y los 4 `aisb-*` tienen ya primer commit, GDPR real (checkbox +
+plantilla de privacidad), el path-traversal de `cron_agente.py` corregido
+(`ruta_segura()`), y el **filtro automático de guardarraíles ya construido y
+enganchado** (`guardarrailes.py`, ver más abajo). Todo lo demás sigue
+probado solo contra placeholders en `config.json` (`PENDIENTE-DOMINIO`)
+hasta comprar el dominio real.
+
+**`guardarrailes.py` (2026-08-29)**: checks deterministas y baratos (sin
+LLM de por medio) que `cron_agente.py::ejecutar()` corre justo antes de
+escribir/commitear cualquier archivo que devuelva una IA. Un solo
+bloqueante descarta el turno completo (no escribe nada, no commitea nada) y
+registra el intento en `log.json` con `resultado: "error"` — mismo campo
+que ya usa `poller.py` para avisar a Telegram, así un bloqueo se entera
+solo sin código nuevo de aviso. Cinco categorías, la checklist ya cerrada
+en el diseño:
+- Enlaces internos rotos (los externos se ignoran a propósito — un enlace
+  externo caído es cosa de un tercero, no del agente).
+- Duplicación de contenido entre páginas propias del mismo repo (similitud
+  de texto visible vía `difflib`, con `autojunk=False` — por defecto
+  difflib trata como "ruido" los fragmentos muy repetidos en textos largos,
+  que es justo el patrón que este check busca detectar).
+- Canibalización de keywords: mismo `<title>` o misma meta-description en
+  más de una página.
+- Metadatos básicos: `<title>` y meta-description presentes y no vacíos
+  (bloqueante), longitud de meta-description fuera de 50-160 caracteres
+  (solo aviso).
+- JSON-LD sintácticamente inválido si el agente incluye alguno (bloqueante
+  solo si está mal formado, su ausencia no bloquea).
+Probado con casos sintéticos por categoría + un flujo end-to-end completo
+sobre una copia descartable de `aisb-claude` (LLM mockeado): confirma que
+un bloqueo no toca el archivo real y sí deja el intento documentado en el
+log con su motivo exacto.
 
 Pendiente para la próxima sesión, en orden:
-1. **Filtro automático de guardarraíles** (bloqueante 7, sin construir
-   todavía): checks deterministas — enlaces rotos, duplicación de
-   contenido, canibalización de keywords, metadatos (title/meta-description),
-   presencia/validez de JSON-LD — enganchados en `cron_agente.py::ejecutar()`
-   antes de commitear. Es la pieza que falta para poder dejarlo en cron sin
-   supervisión diaria.
-2. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las
+1. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las
    4 IAs decidan nombre de dominio + reparto de nicho/personalidad — ya usa
    el tier "consejo" (el modelo más potente de cada casa: claude-opus-5,
    gpt-5.5-pro-2026-04-23, gemini-3.1-pro-preview, deepseek-reasoner),
    verificado en vivo el 2026-08-29.
-3. Decidir si subir `ai-seo-battle-dashboard` y los 4 `aisb-*` a GitHub
+2. Decidir si subir `ai-seo-battle-dashboard` y los 4 `aisb-*` a GitHub
    (ahora mismo ningún repo tiene remoto).
-4. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
+3. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
    Listmonk + SMTP relay + SPF/DKIM/DMARC, y recalcular presupuesto contra
    el techo de 40-50€.

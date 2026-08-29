@@ -16,9 +16,12 @@ Qué hace ya, de verdad, sin esperar al dominio:
   6. Añade el evento a su log.json local con datos REALES de la llamada
      (tokens, coste, duración) — no inventados.
 
+Antes de escribir nada pasa por guardarrailes.validar() (enlaces rotos,
+duplicación, canibalización de keywords, metadatos, JSON-LD) — un solo
+bloqueante descarta el turno completo sin commitear ni tocar disco.
+
 Qué NO hace todavía porque no existe: publicar el commit en un servidor
-real (no hay subdominio), enviar la newsletter (no hay Listmonk), ni pasar
-por el filtro automático de guardarraíles (pendiente de diseñar aparte).
+real (no hay subdominio), ni enviar la newsletter (no hay Listmonk).
 Con --dry-run no escribe ni commitea nada, solo imprime lo que haría.
 """
 import json
@@ -35,6 +38,7 @@ sys.path.insert(0, str(DASHBOARD_DIR / "consulta_ias"))
 
 from clientes import llamar_con_metadata  # noqa: E402
 from db import get_conn  # noqa: E402
+import guardarrailes  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
@@ -187,6 +191,36 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         destinos = [(ruta_segura(repo_dir, a["ruta"]), a["contenido_completo"]) for a in archivos]
     except ValueError as e:
         print(f"[{ia}] {e} — no se aplica ningún cambio de este turno.", file=sys.stderr)
+        return
+
+    archivos_nuevos = {destino.relative_to(repo_dir).as_posix(): contenido for destino, contenido in destinos}
+    bloqueantes, avisos = guardarrailes.validar(repo_dir, archivos_nuevos)
+    for aviso in avisos:
+        print(f"[{ia}] aviso guardarraíl: {aviso}")
+
+    if bloqueantes:
+        detalle = "; ".join(bloqueantes)
+        print(f"[{ia}] BLOQUEADO por guardarraíles, no se aplica ningún cambio de este turno:", file=sys.stderr)
+        for b in bloqueantes:
+            print(f"  - {b}", file=sys.stderr)
+        registrar_evento(repo_dir, {
+            "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "modelo_exacto": resultado["modelo"],
+            "tipo_tarea": datos.get("tipo_tarea"),
+            "input_contexto": ctx,
+            "razonamiento": razonamiento,
+            "accion_tipo": datos.get("accion_tipo"),
+            "output_resumen": datos.get("output_resumen"),
+            "output_url": None,
+            "tokens_in": resultado["tokens_in"],
+            "tokens_out": resultado["tokens_out"],
+            "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
+            "duracion_seg": resultado["duracion_seg"],
+            "resultado": "error",
+            "detalle_error": f"bloqueado por guardarraíles: {detalle}",
+        })
+        git_commit(repo_dir, "log: registra intento bloqueado por guardarraíles")
         return
 
     for destino, contenido in destinos:
