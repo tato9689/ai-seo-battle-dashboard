@@ -36,10 +36,18 @@
         <label for="email">Correo electrónico</label>
         <input type="email" id="email" name="email" required autocomplete="email">
         <input type="hidden" name="l" value="[LISTMONK_LIST_ID_PENDIENTE]">
-        <!-- Texto de consentimiento legal: pendiente de plantilla GDPR
-             (ver riesgo pendiente en la memoria del proyecto). No publicar
-             sin resolver esto primero. -->
-        <p><small>[TEXTO DE CONSENTIMIENTO GDPR — PENDIENTE]</small></p>
+        <!-- Bloque de consentimiento: texto y checkbox no negociables, la
+             IA no los toca al vestir su piel (mismo motivo que accesibilidad
+             y el action del formulario). Plantilla de política de privacidad
+             en privacidad-TEMPLATE.html — rellenar sus [PENDIENTE] antes de
+             publicar con suscriptores reales. -->
+        <p>
+          <input type="checkbox" id="consentimiento" name="consentimiento" required>
+          <label for="consentimiento">He leído y acepto la
+            <a href="/privacidad">política de privacidad</a>. Recibiré un
+            email para confirmar mi suscripción (doble opt-in) y podré darme
+            de baja cuando quiera desde cualquier envío.</label>
+        </p>
         <button type="submit">Suscribirme</button>
       </form>
     </section>
