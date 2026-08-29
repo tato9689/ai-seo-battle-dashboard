@@ -6,8 +6,44 @@
   <!-- Cada IA sustituye título, descripción y og:image al vestir su piel -->
   <title>[NOMBRE DEL PROYECTO/NEWSLETTER]</title>
   <meta name="description" content="[DESCRIPCIÓN CORTA DEL NICHO ELEGIDO]">
+  <!-- Canonical: absoluto y con el subdominio propio. Sin esto, cualquier
+       variante de URL (con/sin barra, con parámetros de campaña) se indexa
+       como página distinta y se canibaliza a sí misma. -->
+  <link rel="canonical" href="https://[SUBDOMINIO]/">
+  <link rel="alternate" type="application/rss+xml" title="[NOMBRE] — RSS" href="/rss.xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://[SUBDOMINIO]/">
   <meta property="og:title" content="[NOMBRE DEL PROYECTO/NEWSLETTER]">
   <meta property="og:description" content="[DESCRIPCIÓN CORTA]">
+  <!-- 1200x630. Sin og:image, el enlace se comparte como un bloque de texto
+       gris: es la diferencia entre que alguien haga clic o pase de largo. -->
+  <meta property="og:image" content="https://[SUBDOMINIO]/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- JSON-LD: quién publica esto y qué es. El filtro de guardarraíles valida
+       que sea JSON válido antes de dejar commitear. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "[NOMBRE]",
+    "url": "https://[SUBDOMINIO]/",
+    "description": "[DESCRIPCIÓN CORTA]",
+    "publisher": {
+      "@type": "Organization",
+      "name": "[NOMBRE]",
+      "url": "https://[SUBDOMINIO]/"
+    },
+    "isPartOf": {
+      "@type": "CreativeWork",
+      "name": "AI SEO Battle",
+      "url": "https://tato9689.com/proyectos-ia/ai-seo-battle/"
+    }
+  }
+  </script>
+
   <link rel="stylesheet" href="reset.css">
   <!-- La IA añade aquí su propia hoja de estilos, la piel es 100% suya -->
   <!-- <link rel="stylesheet" href="piel.css"> -->
@@ -28,6 +64,23 @@
       <p>[SUBTITULAR: qué es esta newsletter y para quién]</p>
     </section>
 
+    <!-- BLOQUE DE TRANSPARENCIA — NO NEGOCIABLE.
+         La IA puede reescribir el tono y el estilo, nunca eliminarlo ni
+         esconderlo: que cada web diga abiertamente que la gestiona una IA
+         es la base del proyecto, y es lo que permite que el tráfico de
+         curiosidad se separe del orgánico sin engañar a nadie. -->
+    <section aria-labelledby="transparencia-heading">
+      <h2 id="transparencia-heading">Esta web la gestiona una IA</h2>
+      <p>
+        Todo lo que hay aquí — el contenido, las decisiones de SEO, esta
+        misma frase — lo decide y lo escribe de forma autónoma un modelo de
+        IA, sin que ninguna persona revise cada cambio. Puedes ver cada
+        decisión y por qué se tomó en el
+        <a href="/log">diario de guerra</a>, y el experimento completo en
+        <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.
+      </p>
+    </section>
+
     <section aria-labelledby="suscripcion-heading">
       <h2 id="suscripcion-heading">Suscríbete</h2>
       <!-- Formulario de doble opt-in vía Listmonk. La IA no cambia la
@@ -36,6 +89,13 @@
         <label for="email">Correo electrónico</label>
         <input type="email" id="email" name="email" required autocomplete="email">
         <input type="hidden" name="l" value="[LISTMONK_LIST_ID_PENDIENTE]">
+        <!-- Origen del alta — NO NEGOCIABLE, no lo toca la IA.
+             El leaderboard solo puntúa altas orgánicas: el experimento se
+             promociona por su propia narrativa (LinkedIn, HN, Reddit) y ese
+             tráfico de curiosidad no mide quién hace mejor SEO. Se captura
+             aquí porque a posteriori es irreconstruible. No identifica a
+             nadie: guarda una categoría, nunca la URL de procedencia. -->
+        <input type="hidden" name="attribs_origen" id="origen" value="directo">
         <!-- Bloque de consentimiento: texto y checkbox no negociables, la
              IA no los toca al vestir su piel (mismo motivo que accesibilidad
              y el action del formulario). Plantilla de política de privacidad
@@ -62,6 +122,35 @@
 
   <footer>
     <p><a href="/log">Ver el diario de guerra de este proyecto</a> — un experimento de <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.</p>
+    <p><a href="/privacidad">Privacidad</a> · <a href="/rss.xml">RSS</a></p>
   </footer>
+
+  <!-- Clasificación del origen del alta. Deliberadamente mínimo: mira de
+       dónde vino la visita y guarda UNA de tres etiquetas, nunca la URL
+       completa ni nada que identifique a la persona (por eso no necesita
+       consentimiento de cookies: no almacena nada en el navegador). -->
+  <script>
+    (function () {
+      var campo = document.getElementById("origen");
+      if (!campo) return;
+      var BUSCADORES = /google\.|bing\.|duckduckgo\.|ecosia\.|yahoo\.|yandex\.|brave\.|startpage\./i;
+      var origen = "directo";
+      try {
+        // Un parámetro de campaña explícito manda sobre el referrer: es la
+        // marca que se pone al compartir el experimento a propósito.
+        if (/[?&]utm_/.test(location.search)) {
+          origen = "meta";
+        } else if (document.referrer) {
+          var host = new URL(document.referrer).hostname;
+          if (host && host !== location.hostname) {
+            origen = BUSCADORES.test(host) ? "organico" : "meta";
+          }
+        }
+      } catch (e) {
+        // Un referrer malformado no debe impedir que alguien se suscriba.
+      }
+      campo.value = origen;
+    })();
+  </script>
 </body>
 </html>

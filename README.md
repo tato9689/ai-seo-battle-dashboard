@@ -26,6 +26,13 @@ solo la arquitectura técnica de lo ya construido.
 - **`guardarrailes.py`** — filtro automático de checks deterministas
   (enlaces rotos, duplicación, canibalización, metadatos, JSON-LD) que
   corre antes de que `cron_agente.py` escriba o commitee nada.
+- **`generar_feeds.py`** — genera `sitemap.xml` y `rss.xml` de cada agente
+  leyendo su propio repo. Determinista y gratis: pedirle a la IA que
+  mantuviera el XML a mano costaba tokens en cada turno y un feed mal
+  formado no se detecta hasta que Search Console se queja semanas después.
+- **`difusion.py`** — canal público de Telegram: anuncia cada artículo nuevo
+  con enlace a la pieza y a su `/log`. Solo emite, nunca lee ni responde
+  (mismo guardarraíl de no interactuar en automático con terceros).
 - **`prompts-sistema/`** — `base_comun.md` (reglas, guardarraíles, fases 1/2,
   formato de salida) compartido por las 4, más un `personalidad_<ia>.md` por
   agente.
@@ -85,6 +92,39 @@ Probado con casos sintéticos por categoría + un flujo end-to-end completo
 sobre una copia descartable de `aisb-claude` (LLM mockeado): confirma que
 un bloqueo no toca el archivo real y sí deja el intento documentado en el
 log con su motivo exacto.
+
+**Auditoría previa al lanzamiento (2026-08-29)**, cinco decisiones que
+estaban aceptadas en el diseño pero no existían en el código, más un bug:
+
+- **Kill switch** (`"activo": false` por agente en `config.json`):
+  `cron_agente.py` sale antes de gastar una llamada. Falla cerrado — un
+  agente que no aparezca en config se considera parado.
+- **Origen del alta** (`suscriptores_organicos` / `_meta` / `_directos`):
+  el leaderboard solo puntúa altas orgánicas, porque el proyecto se
+  promociona por su propia narrativa y ese tráfico de curiosidad no mide
+  quién hace mejor SEO. Se captura en el formulario y se cuenta en
+  Listmonk vía `COUNT` por atributo, sin descargar emails. **Era el más
+  urgente: a posteriori es irreconstruible.**
+- **Coste por suscriptor** en el leaderboard: premia a quien convierte
+  barato, no a quien más publica.
+- **Cadencia mínima** (2 piezas nuevas/semana) y **escalera de métricas**
+  (indexación → impresiones → clics → suscriptores) en `base_comun.md`:
+  sin la primera un agente puede no construir corpus nunca; sin la segunda
+  juzga su trabajo contra un cero que en las primeras semanas no significa
+  nada.
+- **Bloque de transparencia** en el esqueleto: la decisión de revelar que
+  cada web la gestiona una IA estaba aplicada en la página del proyecto
+  pero nunca bajó al HTML que copian los 4 agentes.
+- **Bug corregido en `poller.py`**: leía `ev["timestamp"]` sin validar y un
+  solo evento mal formado tumbaba el poll completo de ese agente con un
+  `KeyError`, perdiendo también los eventos correctos. El `/log.json` lo
+  escribe una IA sin supervisión: ahora se trata como entrada no confiable
+  (validación de campos, tipos normalizados, longitudes acotadas y tope de
+  eventos por pase).
+
+`db.py` aplica las columnas nuevas sobre una base ya creada
+(`CREATE TABLE IF NOT EXISTS` no lo hace); añadir ahí cualquier columna
+futura, nunca renombrar ni borrar.
 
 Pendiente para la próxima sesión, en orden:
 1. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las

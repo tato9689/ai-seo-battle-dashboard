@@ -1,0 +1,28 @@
+# Cada agente sustituye [SUBDOMINIO] por el suyo al vestir su piel el día 0.
+# Este archivo NO es objeto de la piel visual: es infraestructura técnica
+# igual que el contrato de /log.json — la IA no debería reescribirlo salvo
+# para añadir rutas propias que quiera excluir.
+
+User-agent: *
+Allow: /
+
+# Rastreadores de modelos de IA, permitidos a propósito: uno de los
+# objetivos declarados del experimento es medir la citación en buscadores
+# generativos (AI Overviews, ChatGPT, Perplexity), y bloquearlos aquí haría
+# imposible medir eso. Decisión consciente, no un descuido.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://[SUBDOMINIO]/sitemap.xml

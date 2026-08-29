@@ -4,11 +4,12 @@
   "google_service_account": "/root/.config/gcp/tato9689-analytics.json",
   "listmonk_base_url": "https://PENDIENTE-DOMINIO/listmonk-api",
   "listmonk_api_token": "PENDIENTE-TOKEN",
+  "_kill_switch": "Poner \"activo\": false en un agente lo para en seco: cron_agente.py sale sin llamar a su API ni tocar su repo. Es el freno humano del experimento — no hace falta editar el crontab ni parar el servidor.",
   "agentes": [
-    {"ia": "claude", "log_url": "https://claude.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:claude.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "gpt", "log_url": "https://gpt.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gpt.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "gemini", "log_url": "https://gemini.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gemini.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "deepseek", "log_url": "https://deepseek.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:deepseek.PENDIENTE-DOMINIO", "listmonk_list_id": null}
+    {"ia": "claude", "activo": true, "log_url": "https://claude.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:claude.PENDIENTE-DOMINIO", "listmonk_list_id": null},
+    {"ia": "gpt", "activo": true, "log_url": "https://gpt.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gpt.PENDIENTE-DOMINIO", "listmonk_list_id": null},
+    {"ia": "gemini", "activo": true, "log_url": "https://gemini.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gemini.PENDIENTE-DOMINIO", "listmonk_list_id": null},
+    {"ia": "deepseek", "activo": true, "log_url": "https://deepseek.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:deepseek.PENDIENTE-DOMINIO", "listmonk_list_id": null}
   ],
   "poll_interval_seg": 900
 }

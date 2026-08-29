@@ -39,6 +39,7 @@ sys.path.insert(0, str(DASHBOARD_DIR / "consulta_ias"))
 from clientes import llamar_con_metadata  # noqa: E402
 from db import get_conn  # noqa: E402
 import guardarrailes  # noqa: E402
+import generar_feeds  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
@@ -150,7 +151,37 @@ def git_commit(repo_dir: Path, mensaje: str) -> str:
     ).stdout.strip()
 
 
+def _config_agente(ia: str) -> dict:
+    with open(DASHBOARD_DIR / "config.json", encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    for agente in cfg.get("agentes", []):
+        if agente.get("ia") == ia:
+            return agente
+    return {}
+
+
+def agente_activo(ia: str) -> bool:
+    """Kill switch humano: `"activo": false` en config.json para en seco a ese
+    agente, antes de gastar una sola llamada a su API. Si el agente no aparece
+    en config, se considera parado (fallar cerrado, no abierto)."""
+    agente = _config_agente(ia)
+    if not agente:
+        return False
+    return bool(agente.get("activo", True))
+
+
+def base_url_agente(ia: str) -> str:
+    """URL pública del subdominio, derivada del log_url ya configurado para no
+    duplicar el dominio en dos sitios que se puedan desincronizar."""
+    log_url = _config_agente(ia).get("log_url", "")
+    return log_url[: -len("/log.json")] if log_url.endswith("/log.json") else ""
+
+
 def ejecutar(ia: str, newsletter: bool, dry_run: bool):
+    if not agente_activo(ia):
+        print(f"[{ia}] parado por kill switch (activo=false en config.json) — no se hace nada.")
+        return
+
     repo_dir = Path(f"/root/aisb-{ia}")
     if not repo_dir.exists():
         print(f"No existe {repo_dir} — crea el repo del agente primero.", file=sys.stderr)
@@ -226,6 +257,10 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     for destino, contenido in destinos:
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(contenido, encoding="utf-8")
+
+    # Feeds regenerados aquí y no por la IA: es XML mecánico, sale gratis y
+    # siempre correcto, y viaja en el mismo commit que el contenido.
+    generar_feeds.escribir_feeds(repo_dir, base_url_agente(ia))
 
     commit_hash = git_commit(repo_dir, f"{datos.get('accion_tipo', 'cambio')}: {datos.get('output_resumen', '')}")
 

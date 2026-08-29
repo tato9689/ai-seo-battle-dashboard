@@ -91,12 +91,53 @@ def datos_listmonk(base_url: str, token: str, list_id) -> dict:
     )
     resp.raise_for_status()
     data = resp.json()["data"]
-    return {
+
+    salida = {
         "suscriptores_totales": data.get("subscriber_count"),
         # netos_dia y tasa_apertura del último envío requieren el endpoint de
         # campaigns; se deja a None hasta que Listmonk esté montado de verdad.
         "suscriptores_netos_dia": None,
         "tasa_apertura_ultimo_envio": None,
+    }
+    salida.update(_desglose_origen(base_url, token, list_id))
+    return salida
+
+
+def _desglose_origen(base_url: str, token: str, list_id) -> dict:
+    """Cuenta suscriptores confirmados por origen del alta.
+
+    El leaderboard solo puntúa los orgánicos: el experimento se promociona por
+    su propia narrativa y ese tráfico de curiosidad no mide quién hace mejor
+    SEO. El origen lo graba el formulario en el atributo `origen` (ver
+    esqueleto-web/index.html) — aquí solo se cuenta, no se infiere nada.
+
+    Se consulta con el query SQL de Listmonk sobre `subscribers.attribs`, un
+    COUNT por categoría, sin descargar la lista de emails: no hace falta
+    tocar datos personales para tener el número.
+    """
+    conteos = {}
+    for etiqueta in ("organico", "meta", "directo"):
+        try:
+            resp = httpx.get(
+                f"{base_url}/subscribers",
+                params={
+                    "list_id": list_id,
+                    "query": f"subscribers.attribs->>'origen' = '{etiqueta}' "
+                             f"AND subscribers.status = 'enabled'",
+                    "per_page": 1,  # solo interesa el total que devuelve la respuesta
+                },
+                headers={"Authorization": f"token {token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            conteos[etiqueta] = resp.json()["data"].get("total")
+        except Exception as e:
+            print(f"desglose de origen '{etiqueta}' no disponible: {e}", file=sys.stderr)
+            conteos[etiqueta] = None
+    return {
+        "suscriptores_organicos": conteos["organico"],
+        "suscriptores_meta": conteos["meta"],
+        "suscriptores_directos": conteos["directo"],
     }
 
 
@@ -107,6 +148,8 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
         "sesiones_ga4": None, "usuarios_ga4": None, "vistas_ga4": None,
         "clics_gsc": None, "impresiones_gsc": None, "posicion_media_gsc": None,
         "suscriptores_totales": None, "suscriptores_netos_dia": None,
+        "suscriptores_organicos": None, "suscriptores_meta": None,
+        "suscriptores_directos": None,
         "tasa_apertura_ultimo_envio": None,
     }
     fuentes_ok = []
@@ -148,14 +191,18 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
         INSERT INTO metrics_snapshot
             (ia, fecha, sesiones_ga4, usuarios_ga4, vistas_ga4, clics_gsc, impresiones_gsc,
              posicion_media_gsc, suscriptores_totales, suscriptores_netos_dia,
+             suscriptores_organicos, suscriptores_meta, suscriptores_directos,
              tasa_apertura_ultimo_envio, fuente, ingested_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ia, fecha) DO UPDATE SET
             sesiones_ga4=excluded.sesiones_ga4, usuarios_ga4=excluded.usuarios_ga4,
             vistas_ga4=excluded.vistas_ga4, clics_gsc=excluded.clics_gsc,
             impresiones_gsc=excluded.impresiones_gsc, posicion_media_gsc=excluded.posicion_media_gsc,
             suscriptores_totales=excluded.suscriptores_totales,
             suscriptores_netos_dia=excluded.suscriptores_netos_dia,
+            suscriptores_organicos=excluded.suscriptores_organicos,
+            suscriptores_meta=excluded.suscriptores_meta,
+            suscriptores_directos=excluded.suscriptores_directos,
             tasa_apertura_ultimo_envio=excluded.tasa_apertura_ultimo_envio,
             fuente=excluded.fuente, ingested_at=excluded.ingested_at
         """,
@@ -163,6 +210,7 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
             ia, fecha, fila["sesiones_ga4"], fila["usuarios_ga4"], fila["vistas_ga4"],
             fila["clics_gsc"], fila["impresiones_gsc"], fila["posicion_media_gsc"],
             fila["suscriptores_totales"], fila["suscriptores_netos_dia"],
+            fila["suscriptores_organicos"], fila["suscriptores_meta"], fila["suscriptores_directos"],
             fila["tasa_apertura_ultimo_envio"], "+".join(fuentes_ok),
             datetime.now(timezone.utc).isoformat(),
         ),

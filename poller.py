@@ -38,6 +38,44 @@ def _avisar(texto: str):
         print(f"aviso Telegram fallido (no bloqueante): {e}", file=sys.stderr)
 
 
+# Tope de eventos por poll: un agente con el log corrupto (o creciendo sin
+# control) no debe poder inundar la base ni el canal de Telegram de un tirón.
+MAX_EVENTOS_POR_POLL = 200
+MAX_LARGO_TEXTO = 20000  # razonamiento/resumen: recorta, no rechaza
+
+
+def evento_valido(ev) -> bool:
+    """El /log.json lo escribe una IA sin supervisión diaria: es entrada no
+    confiable, igual que las rutas de archivo en cron_agente.py. Sin esto, un
+    evento sin 'timestamp' o sin 'evento_id' tumbaba el poll entero de ese
+    agente con un KeyError y se perdían también los eventos correctos."""
+    if not isinstance(ev, dict):
+        return False
+    for campo in ("evento_id", "timestamp"):
+        valor = ev.get(campo)
+        if not isinstance(valor, str) or not valor.strip():
+            return False
+    return True
+
+
+def _texto(valor, limite: int = MAX_LARGO_TEXTO):
+    """Normaliza a texto acotado. Un modelo puede devolver un número, una
+    lista o un razonamiento de megabytes donde el contrato pide una cadena."""
+    if valor is None:
+        return None
+    if not isinstance(valor, str):
+        valor = json.dumps(valor, ensure_ascii=False)
+    return valor[:limite]
+
+
+def _numero(valor):
+    """Los campos de tokens/coste/duración alimentan las gráficas y el KPI de
+    coste por suscriptor — un string colado ahí rompe las agregaciones."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    return valor
+
+
 def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
     try:
         resp = httpx.get(log_url, timeout=10)
@@ -51,9 +89,17 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
         "SELECT 1 FROM activity_log WHERE ia = ? AND fase = 2 LIMIT 1", (ia,)
     ).fetchone() is not None
 
+    if not isinstance(eventos, list):
+        print(f"[{ia}] {log_url} no devolvió una lista de eventos — se ignora este poll.", file=sys.stderr)
+        return 0
+
     ahora = datetime.now(timezone.utc).isoformat()
     nuevos = 0
-    for ev in eventos:
+    descartados = 0
+    for ev in eventos[:MAX_EVENTOS_POR_POLL]:
+        if not evento_valido(ev):
+            descartados += 1
+            continue
         fase = derivar_fase(ev["timestamp"], checkpoint_iso)
         cur = conn.execute(
             """
@@ -65,11 +111,13 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
             ON CONFLICT(ia, evento_id) DO NOTHING
             """,
             (
-                ia, log_url, ev["evento_id"], ev["timestamp"], ev.get("modelo_exacto"),
-                ev.get("tipo_tarea"), json.dumps(ev.get("input_contexto"), ensure_ascii=False),
-                ev.get("razonamiento"), ev.get("accion_tipo"), ev.get("output_resumen"),
-                ev.get("output_url"), ev.get("tokens_in"), ev.get("tokens_out"),
-                ev.get("coste_estimado"), ev.get("duracion_seg"), ev.get("resultado"), ev.get("detalle_error"),
+                ia, log_url, _texto(ev["evento_id"], 200), _texto(ev["timestamp"], 40),
+                _texto(ev.get("modelo_exacto"), 100),
+                _texto(ev.get("tipo_tarea"), 100), json.dumps(ev.get("input_contexto"), ensure_ascii=False)[:MAX_LARGO_TEXTO],
+                _texto(ev.get("razonamiento")), _texto(ev.get("accion_tipo"), 100), _texto(ev.get("output_resumen"), 2000),
+                _texto(ev.get("output_url"), 500), _numero(ev.get("tokens_in")), _numero(ev.get("tokens_out")),
+                _numero(ev.get("coste_estimado")), _numero(ev.get("duracion_seg")),
+                _texto(ev.get("resultado"), 20), _texto(ev.get("detalle_error"), 2000),
                 fase, ahora,
             ),
         )
@@ -83,6 +131,11 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
         if fase == 2 and not ya_fase2:
             ya_fase2 = True
             _avisar(f"🔓 AI SEO Battle: {ia} entra en fase 2 (inteligencia competitiva)")
+
+    if descartados:
+        print(f"[{ia}] {descartados} eventos descartados por no cumplir el contrato de /log.json", file=sys.stderr)
+    if len(eventos) > MAX_EVENTOS_POR_POLL:
+        print(f"[{ia}] /log.json traía {len(eventos)} eventos, solo se leyeron los {MAX_EVENTOS_POR_POLL} primeros", file=sys.stderr)
 
     conn.commit()
     return nuevos

@@ -67,6 +67,37 @@ cambio; dilo así en tu razonamiento si no se cumple. "Esperar y no cambiar
 nada porque aún no hay datos suficientes" es una decisión tan válida como
 cualquier otra y así debe quedar reflejada en `accion_tipo`.
 
+## Cadencia mínima de contenido nuevo
+
+Optimizar lo que ya existe es más cómodo que escribir algo nuevo, y con un
+sitio recién nacido es también la peor apuesta: sin corpus no hay nada que
+posicionar. Por eso hay un suelo mínimo, por debajo del cual no puedes
+bajar: **al menos 2 piezas de contenido nuevas por semana** (artículo,
+guía, análisis — no cuenta retocar una existente). Por encima de ese suelo
+decides tú libremente si toca crear o mejorar; si una semana te quedas
+corto, la siguiente lo compensas y lo dices en tu razonamiento.
+
+Este suelo convive con el umbral estadístico de la sección anterior sin
+contradecirlo: "esperar por falta de datos" aplica a **cambiar de
+estrategia**, nunca a dejar de publicar.
+
+## Escalera de métricas: qué es un buen resultado en cada momento
+
+Un dominio nuevo no consigue suscriptores orgánicos en las primeras
+semanas, hagas lo que hagas (Google tarda en indexar y en dar confianza).
+Juzgar tu trabajo por suscriptores desde el día 1 te llevaría a
+sobrerreaccionar sobre un cero que no dice nada. El indicador que te toca
+mirar sube de escalón conforme avanza el experimento:
+
+1. **Indexación** — ¿están tus páginas en el índice de Google?
+2. **Impresiones** — ¿aparece tu contenido en resultados, aunque nadie clique?
+3. **Clics** — ¿la gente elige tu resultado frente a los de al lado?
+4. **Suscriptores** — ¿lo que encuentran les convence de dejar su email?
+
+Fíjate siempre en el escalón más alto que ya tenga señal real, y usa el
+siguiente como objetivo. Que un escalón superior esté a cero cuando el
+inferior aún es débil es lo esperable, no un fracaso.
+
 ## Qué información recibes cada día (varía, no la des por fija)
 
 Se te pasa un bloque de contexto con tus propias métricas recientes

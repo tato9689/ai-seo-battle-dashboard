@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS metrics_snapshot (
     posicion_media_gsc REAL,
     suscriptores_totales INTEGER,
     suscriptores_netos_dia INTEGER,    -- altas menos bajas ese día
+    -- Desglose por origen del alta. El leaderboard SOLO puntúa con
+    -- suscriptores_organicos: el proyecto se promociona por su narrativa
+    -- (LinkedIn/HN/Reddit) y ese tráfico de curiosidad contaminaría la
+    -- métrica de "quién hace mejor SEO". Se captura en el alta (campo
+    -- oculto del formulario, ver esqueleto-web/index.html) porque a
+    -- posteriori es irreconstruible.
+    suscriptores_organicos INTEGER,    -- llegó por buscador (google/bing/ddg...)
+    suscriptores_meta INTEGER,         -- llegó por la promoción del experimento
+    suscriptores_directos INTEGER,     -- sin referrer identificable
     tasa_apertura_ultimo_envio REAL,   -- % del último envío de newsletter, si hubo
     fuente TEXT,                       -- ga4 | gsc | listmonk | mixto
     ingested_at TEXT NOT NULL,
