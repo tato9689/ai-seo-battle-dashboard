@@ -26,6 +26,7 @@ Con --dry-run no escribe ni commitea nada, solo imprime lo que haría.
 """
 import json
 import re
+import sqlite3
 import subprocess
 import sys
 import uuid
@@ -37,7 +38,7 @@ sys.path.insert(0, str(DASHBOARD_DIR))
 sys.path.insert(0, str(DASHBOARD_DIR / "consulta_ias"))
 
 from clientes import llamar_con_metadata  # noqa: E402
-from db import get_conn  # noqa: E402
+from db import get_conn, init_db  # noqa: E402
 import guardarrailes  # noqa: E402
 import generar_feeds  # noqa: E402
 import portada  # noqa: E402
@@ -120,8 +121,16 @@ def cargar_prompt_sistema(ia: str) -> str:
 def contexto_metricas(ia: str) -> dict:
     """Sus propias métricas + evolución vs hace ~7 días. Fuente:
     metrics_snapshot, la misma tabla que rellena poller_metrics.py — así el
-    agente ve exactamente lo mismo que ya se muestra en el dashboard."""
-    conn = get_conn()
+    agente ve exactamente lo mismo que ya se muestra en el dashboard.
+
+    Tolera que la base no exista: el primer día del experimento el cron del
+    agente puede correr antes que el del poller, y quedarse sin publicar por
+    no tener aún una tabla de métricas vacía sería absurdo."""
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1 FROM metrics_snapshot LIMIT 1")
+    except sqlite3.Error:
+        return {"aviso": "sin snapshot de métricas todavía, decide con prudencia"}
     hoy = conn.execute(
         "SELECT * FROM metrics_snapshot WHERE ia = ? ORDER BY fecha DESC LIMIT 1", (ia,)
     ).fetchone()
@@ -333,6 +342,14 @@ def base_url_agente(ia: str) -> str:
 
 
 def ejecutar(ia: str, newsletter: bool, dry_run: bool):
+    # Crea las tablas si faltan (idempotente): el cron del agente puede correr
+    # antes que el del poller el primer día, y todo lo que registra después
+    # —indexación, presupuesto— necesita que el esquema exista.
+    try:
+        init_db()
+    except sqlite3.Error as e:
+        print(f"no se pudo inicializar la base: {e}", file=sys.stderr)
+
     if not agente_activo(ia):
         print(f"[{ia}] parado por kill switch (activo=false en config.json) — no se hace nada.")
         return
