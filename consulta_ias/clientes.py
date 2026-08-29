@@ -29,6 +29,11 @@ TIMEOUT = 60
 #   - GPT: gpt-5.5-pro-2026-04-23, el pro dated más reciente disponible.
 #   - Claude: claude-opus-5, el flagship actual de Anthropic.
 #   - DeepSeek: deepseek-reasoner ya es su tier más potente, sin cambio.
+# Verificado contra la API de cada proveedor el 2026-08-29 (no de memoria).
+# `diaria` y `semanal` son las dos opciones entre las que elige el propio
+# agente ("barato" / "potente", ver presupuesto.py), así que **tienen que ser
+# modelos distintos y con precios distintos**: si coinciden, ese agente no
+# tiene ninguna decisión que tomar y el experimento deja de ser simétrico.
 MODELOS = {
     "claude": {
         "diaria": "claude-haiku-4-5-20251001",
@@ -36,19 +41,26 @@ MODELOS = {
         "consejo": "claude-opus-5",
     },
     "gpt": {
-        "diaria": "gpt-5.2-mini",
-        "semanal": "gpt-5.2",
+        # gpt-5.2-mini NO EXISTE (404 en la API): habría hecho fallar todas
+        # las ejecuciones diarias de GPT. Se pasa a la familia 5.4, que tiene
+        # las dos variantes de la misma generación.
+        "diaria": "gpt-5.4-mini",
+        "semanal": "gpt-5.4",
         "consejo": "gpt-5.5-pro-2026-04-23",
     },
     "gemini": {
-        "diaria": "gemini-3.7-flash",
+        # Antes ambas eran gemini-3.7-flash: Gemini no tenía elección posible.
+        "diaria": "gemini-3.1-flash-lite",
         "semanal": "gemini-3.7-flash",
         "consejo": "gemini-3.1-pro-preview",
     },
     "deepseek": {
-        "diaria": "deepseek-chat",
-        "semanal": "deepseek-reasoner",
-        "consejo": "deepseek-reasoner",
+        # Los alias deepseek-chat y deepseek-reasoner sirven AMBOS
+        # deepseek-v4-flash (comprobado mirando el modelo que devuelve la
+        # API), así que tampoco tenía elección. Se usan los nombres reales.
+        "diaria": "deepseek-v4-flash",
+        "semanal": "deepseek-v4-pro",
+        "consejo": "deepseek-v4-pro",
     },
 }
 
@@ -77,8 +89,16 @@ def _llamar_claude_meta(system: str, user: str, modelo: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
     usage = data.get("usage", {})
+    # No se puede dar por hecho que content[0] sea el texto: los modelos con
+    # razonamiento activado (Opus 5 lo trae de serie) devuelven primero un
+    # bloque de pensamiento sin campo "text", y coger el índice 0 reventaba
+    # con KeyError justo en el tier del consejo de sabios.
+    texto = next(
+        (b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"),
+        "",
+    )
     return {
-        "texto": data["content"][0]["text"],
+        "texto": texto,
         "tokens_in": usage.get("input_tokens"),
         "tokens_out": usage.get("output_tokens"),
         "duracion_seg": round(duracion, 2),
