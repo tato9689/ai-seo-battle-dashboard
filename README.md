@@ -47,7 +47,27 @@ solo la arquitectura técnica de lo ya construido.
 
 ## Estado (2026-08-29)
 
-Las 4 API keys están dadas de alta y verificadas con llamadas reales. Todo
-lo demás sigue probado solo contra placeholders en `config.json`
-(`PENDIENTE-DOMINIO`) hasta comprar el dominio real — ver el resto de
-bloqueantes en la memoria del proyecto.
+Las 4 API keys están dadas de alta y verificadas con llamadas reales. Este
+repo y los 4 `aisb-*` tienen ya primer commit, GDPR real (checkbox +
+plantilla de privacidad) y el path-traversal de `cron_agente.py` corregido
+(`ruta_segura()`, valida todo el batch de archivos antes de escribir
+ninguno). Todo lo demás sigue probado solo contra placeholders en
+`config.json` (`PENDIENTE-DOMINIO`) hasta comprar el dominio real.
+
+Pendiente para la próxima sesión, en orden:
+1. **Filtro automático de guardarraíles** (bloqueante 7, sin construir
+   todavía): checks deterministas — enlaces rotos, duplicación de
+   contenido, canibalización de keywords, metadatos (title/meta-description),
+   presencia/validez de JSON-LD — enganchados en `cron_agente.py::ejecutar()`
+   antes de commitear. Es la pieza que falta para poder dejarlo en cron sin
+   supervisión diaria.
+2. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las
+   4 IAs decidan nombre de dominio + reparto de nicho/personalidad.
+3. Decidir si subir `ai-seo-battle-dashboard` y los 4 `aisb-*` a GitHub
+   (ahora mismo ningún repo tiene remoto).
+4. Decidir tier de modelo para el consejo de sabios (¿flagship real —Opus,
+   Gemini Pro— o la variante "semanal" ya calibrada? Gemini hoy tiene
+   "semanal" = "diaria", ambas Flash).
+5. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
+   Listmonk + SMTP relay + SPF/DKIM/DMARC, y recalcular presupuesto contra
+   el techo de 40-50€.
