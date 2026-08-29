@@ -5,11 +5,41 @@
   "listmonk_base_url": "https://PENDIENTE-DOMINIO/listmonk-api",
   "listmonk_api_token": "PENDIENTE-TOKEN",
   "_kill_switch": "Poner \"activo\": false en un agente lo para en seco: cron_agente.py sale sin llamar a su API ni tocar su repo. Es el freno humano del experimento — no hace falta editar el crontab ni parar el servidor.",
+  "tope_mensual_eur": 5.0,
+  "_tope": "Tope de gasto en €/mes POR AGENTE (una API cada uno). Al 80% se degrada al modelo barato aunque toque newsletter; al 100% no se llama y el turno queda registrado como bloqueado por presupuesto. Se puede afinar por agente con \"tope_mensual_eur\" dentro de su entrada.",
   "agentes": [
-    {"ia": "claude", "activo": true, "log_url": "https://claude.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:claude.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "gpt", "activo": true, "log_url": "https://gpt.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gpt.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "gemini", "activo": true, "log_url": "https://gemini.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:gemini.PENDIENTE-DOMINIO", "listmonk_list_id": null},
-    {"ia": "deepseek", "activo": true, "log_url": "https://deepseek.PENDIENTE-DOMINIO/log.json", "ga4_property": "properties/PENDIENTE", "gsc_site": "sc-domain:deepseek.PENDIENTE-DOMINIO", "listmonk_list_id": null}
+    {
+      "ia": "claude",
+      "activo": true,
+      "log_url": "https://claude.PENDIENTE-DOMINIO/log.json",
+      "ga4_property": "properties/PENDIENTE",
+      "gsc_site": "sc-domain:claude.PENDIENTE-DOMINIO",
+      "listmonk_list_id": null
+    },
+    {
+      "ia": "gpt",
+      "activo": true,
+      "log_url": "https://gpt.PENDIENTE-DOMINIO/log.json",
+      "ga4_property": "properties/PENDIENTE",
+      "gsc_site": "sc-domain:gpt.PENDIENTE-DOMINIO",
+      "listmonk_list_id": null
+    },
+    {
+      "ia": "gemini",
+      "activo": true,
+      "log_url": "https://gemini.PENDIENTE-DOMINIO/log.json",
+      "ga4_property": "properties/PENDIENTE",
+      "gsc_site": "sc-domain:gemini.PENDIENTE-DOMINIO",
+      "listmonk_list_id": null
+    },
+    {
+      "ia": "deepseek",
+      "activo": true,
+      "log_url": "https://deepseek.PENDIENTE-DOMINIO/log.json",
+      "ga4_property": "properties/PENDIENTE",
+      "gsc_site": "sc-domain:deepseek.PENDIENTE-DOMINIO",
+      "listmonk_list_id": null
+    }
   ],
   "poll_interval_seg": 900
 }

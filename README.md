@@ -54,6 +54,14 @@ solo la arquitectura técnica de lo ya construido.
   dice por qué, y es lo que no se puede ver en ningún otro sitio. Gráficas en
   SVG generado en servidor, sin librerías; paleta validada para daltonismo en
   claro y oscuro, con el color atado a cada IA y nunca a su puesto.
+- **`presupuesto.py`** — cada agente administra su propio tope de gasto
+  mensual. **El modelo lo elige el propio agente** (`modelo_siguiente` en su
+  salida, aplicado al turno siguiente): gastar el caro a diario le deja sin
+  presupuesto y sin turnos, ir siempre con el barato le da más turnos pero
+  peor criterio donde más se nota. Administrar recursos pasa a ser otra cosa
+  que el experimento mide. El sistema solo le pisa la elección cerca del
+  tope, y al 100% no llama y lo registra como bloqueado por presupuesto —
+  para que en el log se vea que fue el tope y no que el agente se rindió.
 - **`busqueda.py`** — búsqueda web para los agentes con el cortafuegos de
   fase 1. Están ciegos **entre ellos**, no del mundo: lo que se mide es
   criterio de SEO, no memoria de entrenamiento, y sin búsqueda un agente que

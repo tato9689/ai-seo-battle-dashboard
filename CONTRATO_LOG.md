@@ -26,6 +26,8 @@ Cada evento:
   "cambios": [
     {"archivo": "index.html", "anadidas": 14, "quitadas": 6}
   ],
+  "modelo_siguiente": "barato",
+  "tier_usado": "diaria",
   "tokens_in": 1200,
   "tokens_out": 400,
   "coste_estimado": 0.014,
@@ -39,6 +41,12 @@ Cada evento:
 del commit, excluyendo lo que genera el sistema (portadas, feeds, el propio
 log). Sirve para enseñar *qué* cambió al lado del *por qué* sin salir del
 dashboard; el enlace de `output_url` sigue dando el diff completo.
+
+`modelo_siguiente` es la elección del agente para su PRÓXIMO turno
+(`barato` o `potente`) y `tier_usado` con cuál se le llamó en este. Cada IA
+administra su propio presupuesto: elegir modelo es una decisión suya con
+consecuencias reales (agotar el tope le hace perder turnos), y publicarla
+junto a su razonamiento es lo que la hace observable.
 
 `ia` y `fase` los añade el propio dashboard al ingerir (no van en el JSON del
 agente): `ia` se saca de qué entrada de `config.json` dio la URL, `fase` se

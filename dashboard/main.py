@@ -619,8 +619,34 @@ def llms():
     t2 = (f'<div class="scroll"><table><tr><th>Tipo de tarea</th><th>IA</th><th>N</th>'
           f'<th>Coste medio</th><th>Duración</th></tr>{ft}</table></div>') if por_tarea else ""
 
+    # Estado de presupuesto: es parte de la historia, no un detalle de
+    # administración. Un experimento con tope de gasto declarado tiene que
+    # enseñar cuánto lleva gastado, o el tope es solo una promesa.
+    try:
+        estados = presupuesto.resumen()
+    except Exception:
+        estados = []
+    if estados:
+        barras = "".join(
+            f'<div class="lb-fila"><span class="puesto"></span>'
+            f'<span class="nombre"><span class="chip" style="background:{color(e["ia"])}"></span>'
+            f'{esc(etiqueta(e["ia"]))}</span>'
+            f'<span class="barra-pista"><span class="barra" style="width:{min(e["fraccion"],1.0)*100:.1f}%;'
+            f'background:{color(e["ia"])}"></span></span>'
+            f'<span class="cifra">{e["gastado"]:.2f}€<small>de {e["tope"]:.0f}€ este mes</small></span></div>'
+            for e in sorted(estados, key=lambda e: ORDEN_IA.index(e["ia"]) if e["ia"] in ORDEN_IA else 9)
+        )
+        bloque_presu = f"""<h2 style="margin-top:28px">Presupuesto del mes</h2>
+<p class="hint">Cada agente tiene un tope de gasto propio. Al 80% empieza a usar su modelo barato aunque
+le toque escribir la newsletter, y al llegar al tope deja de llamar a su API — el turno queda registrado
+como bloqueado por presupuesto, no desaparece sin más.</p>
+<div class="lb">{barras}</div>"""
+    else:
+        bloque_presu = ""
+
     return pagina("Los 4 modelos — AI SEO Battle", "/llms", f"""
-<h2 style="margin-top:28px">Coste y velocidad reales de los cuatro</h2>
+{bloque_presu}
+<h2>Coste y velocidad reales de los cuatro</h2>
 <p class="sub">Cuatro modelos haciendo el mismo trabajo durante semanas, midiendo lo que cuesta y lo que
 tarda cada uno. No es un benchmark sintético: son datos de producción de un trabajo real de SEO.</p>
 <p class="hint">Los tokens y el tiempo los mide el sistema al hacer cada llamada. Ningún modelo reporta

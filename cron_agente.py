@@ -41,6 +41,7 @@ from db import get_conn  # noqa: E402
 import guardarrailes  # noqa: E402
 import generar_feeds  # noqa: E402
 import portada  # noqa: E402
+import presupuesto  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
@@ -165,6 +166,33 @@ def registrar_urls_publicadas(ia: str, base_url: str, archivos_nuevos: dict):
         print(f"no se pudo registrar la indexación: {e}", file=sys.stderr)
 
 
+ALIAS_TIER = {"barato": "diaria", "potente": "semanal"}
+
+
+def tier_elegido(repo_dir: Path, por_defecto: str) -> str:
+    """Qué modelo pidió el agente para este turno en su turno anterior.
+
+    Se lee del log real y no de un fichero de estado aparte, para que la
+    elección quede publicada junto al razonamiento que la justificó: forma
+    parte de lo que se enseña, no de la fontanería."""
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return por_defecto
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return por_defecto
+    if not isinstance(eventos, list):
+        return por_defecto
+    for ev in eventos:  # el más reciente primero
+        if not isinstance(ev, dict):
+            continue
+        elegido = ev.get("modelo_siguiente")
+        if isinstance(elegido, str) and elegido.lower() in ALIAS_TIER:
+            return ALIAS_TIER[elegido.lower()]
+    return por_defecto
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -273,12 +301,44 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     system = cargar_prompt_sistema(ia)
     ctx = contexto_metricas(ia)
     tarea = "la newsletter semanal" if newsletter else "tu tarea diaria habitual"
+    from clientes import MODELOS  # noqa: E402  (import local: evita ciclo al arrancar)
+    ctx_presu = presupuesto.contexto_para_agente(
+        ia, MODELOS.get(ia, {}), PRECIOS_APROX_POR_M_TOKENS
+    )
     user = (
         f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
+        f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
         f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
     )
 
-    tier = "semanal" if newsletter else "diaria"
+    # Freno de gasto ANTES de llamar. El límite de la consola del proveedor es
+    # la red final, pero salta de golpe y deja al agente mudo sin explicación;
+    # esto degrada primero y solo para del todo al llegar al tope.
+    presu = presupuesto.estado(ia)
+    if not presu["permitir"]:
+        print(f"[{ia}] sin llamada: {presu['motivo']}")
+        registrar_evento(repo_dir, {
+            "evento_id": f"{date.today().isoformat()}-presupuesto",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "modelo_exacto": None, "tipo_tarea": None, "input_contexto": ctx,
+            "razonamiento": "", "accion_tipo": "sin-presupuesto",
+            "output_resumen": presu["motivo"], "output_url": None,
+            "tokens_in": None, "tokens_out": None, "coste_estimado": None,
+            "duracion_seg": None, "resultado": "error",
+            "detalle_error": f"bloqueado por presupuesto: {presu['motivo']}",
+        })
+        return
+
+    # El modelo lo elige el propio agente en su turno anterior: administrar su
+    # presupuesto es parte de lo que se está midiendo, no una decisión del
+    # sistema. El tiering por tarea queda solo como valor de partida el primer
+    # día, cuando todavía no ha elegido nada.
+    tier = tier_elegido(repo_dir, por_defecto="semanal" if newsletter else "diaria")
+    if presu["degradar"] and tier == "semanal":
+        # Único caso en que el sistema le pisa la elección: cerca del tope,
+        # una newsletter con el modelo pequeño es mejor que quedarse sin turnos.
+        print(f"[{ia}] {presu['motivo']}")
+        tier = "diaria"
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
     texto = resultado["texto"]
 
@@ -365,6 +425,10 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         "output_resumen": datos.get("output_resumen"),
         "output_url": url_commit(repo_dir, commit_hash),
         "cambios": cambios,
+        # Con qué modelo pidió trabajar el próximo turno, y con cuál se le
+        # llamó en este. Publicarlo hace visible cómo administra su gasto.
+        "modelo_siguiente": datos.get("modelo_siguiente"),
+        "tier_usado": tier,
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],
         "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
