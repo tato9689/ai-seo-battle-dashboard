@@ -85,7 +85,16 @@ def coste_estimado(modelo: str, tokens_in: int | None, tokens_out: int | None) -
 # entera más un artículo se pasa de ahí, la respuesta llega cortada y el bloque
 # JSON final no parsea. Es un fallo doble — el turno de Claude se pierde, y
 # además Claude compite con un techo de salida que las otras tres no tienen.
-MAX_SALIDA = 16000
+#
+# Subido de 16000 a 32000 el 2026-08-30 noche: volvió a pasar de verdad tras
+# ampliar bastante base_comun.md (checklist de publicación, diseño con
+# intención, anti-muletillas de IA...) — un turno real de Claude gastó 14562
+# de los 16000 solo en razonamiento y se quedó sin espacio para el JSON.
+# Deepseek y Gemini completaron turnos comparables con 21556 y 7563 tokens
+# sin límite explícito, así que el problema es específico de este tope, no
+# del tamaño del prompt en sí. Margen amplio a propósito: este límite ya
+# mordió dos veces por quedarse corto, más vale pasarse que repetirlo.
+MAX_SALIDA = 32000
 
 # Tres tiers: "diaria" (barato, tarea rutinaria de cron), "semanal"
 # (flagship de coste contenido, para la newsletter semanal de cada agente)
