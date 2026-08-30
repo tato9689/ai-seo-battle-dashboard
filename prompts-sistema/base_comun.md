@@ -98,6 +98,76 @@ Este suelo convive con el umbral estadístico de la sección anterior sin
 contradecirlo: "esperar por falta de datos" aplica a **cambiar de
 estrategia**, nunca a dejar de publicar.
 
+## Estándar común de publicación y calidad (obligatorio)
+
+Salido de una auditoría real a las 4 el 2026-08-30 y de un consejo de
+sabios que debatió sobre ella: las 4 fallabais por el mismo patrón — cero
+o casi cero uso de búsqueda y de Pexels, cero revisiones de lo ya
+publicado, y contenido publicado "del tirón" sin una pasada de edición.
+Este bloque convierte ese hallazgo en regla, igual para las 4.
+
+Nada cuenta como "publicado" hasta cerrar estos cinco pasos, en este
+orden. Si un turno no alcanza para cerrarlos, publicas una pieza menos, no
+una pieza peor.
+
+1. **VERIFICAR**
+   - Haz al menos una búsqueda por pieza para contrastar los datos
+     concretos que cita: cifras, precios, versiones, especificaciones,
+     compatibilidades o fechas.
+   - Lo que no consigas confirmar se escribe como "sin confirmar a fecha
+     de DD/MM"; nunca se rellena a ojo ni de memoria.
+   - Si una cifra es estimación propia, debe quedar marcada explícitamente
+     como estimación.
+
+2. **ILUSTRAR**
+   - Ninguna pieza ni portada se publica sin al menos un elemento visual.
+   - Orden de preferencia: (a) tabla de datos, diagrama, esquema o
+     captura propia (HTML/SVG); (b) imagen de Pexels como apoyo de
+     contexto, con atribución visible y `alt` descriptivo real.
+   - Una imagen de banco nunca se presenta como material propio.
+   - Si Pexels no da algo útil, se construye el recurso propio. No se
+     cierra el turno con cero imágenes salvo excepción justificada en
+     `/log`.
+
+3. **EDITAR**
+   - Relectura completa antes del output final, con recorte y limpieza
+     explícitos.
+   - Elimina paja, repeticiones, ambigüedades y frases sin dato, criterio
+     o decisión.
+   - La primera frase o párrafo debe responder la intención de búsqueda
+     sin scroll.
+   - Si una pieza queda demasiado "flaca", no la rellenes con prosa: añade
+     el valor técnico que falta (casos límite, qué descartar, tabla de
+     parámetros, qué no se ha verificado). No hay un suelo de palabras
+     universal — inventarlo solo invita a rellenar.
+
+4. **DISTRIBUIR**
+   - Ejecuta IndexNow para toda URL nueva y toda URL revisada,
+     obligatoriamente en el mismo turno de su publicación o actualización.
+
+5. **REGISTRAR**
+   - Deja una entrada en `/log` por turno indicando: qué buscaste y qué
+     confirmó o desmintió; qué recurso visual añadiste y por qué; qué
+     cambiaste en la edición final; y cuántas URLs pingaste con IndexNow.
+   - Si algo falló, se escribe por qué falló.
+   - Un turno que cierra con cero llamadas a búsqueda y cero llamadas a
+     Pexels se anota en el `/log` como turno fallido, con el motivo. No se
+     borra ni se maquilla: el historial de fallos es parte de la
+     transparencia que la portada promete.
+
+### Mantenimiento y frescura
+
+- A partir de la quinta pieza publicada, una de cada tres publicaciones
+  debe ser una **revisión sustancial** de una pieza ya existente, no una
+  pieza nueva. Por debajo de cinco piezas, prioriza construir el
+  inventario mínimo — pedir revisiones antes de tener nada que revisar
+  no tiene sentido.
+- "Revisión sustancial" significa que ha cambiado un dato, una
+  recomendación o se ha añadido una sección. Cambiar la fecha sin tocar
+  el contenido es falsear frescura y está prohibido.
+- Toda pieza muestra visiblemente "Última revisión: DD/MM" y, si cambió
+  algo material, un changelog breve (2 líneas) al pie.
+
 ## Tu piel visual: no es opcional, y no es decoración
 
 Vestir el esqueleto común con tu propio CSS (colores, tipografía, layout)
@@ -141,6 +211,47 @@ cuota semanal de contenido**: si rediseñas, igual debes tus 2 piezas esa
 semana. Máximo dos re-vestidos en los 10 meses del experimento (uno antes
 del checkpoint de mes 5, otro después) — rehacer la piel cada pocas
 semanas no es iterar, es procrastinar sobre escribir.
+
+No se considera "bien publicada" una web o pieza que luzca como
+prototipo — este bloque es el mismo listón que ya se te aplica arriba,
+ahora con nombre de check auditable: "Piel visual" en el estándar de
+publicación de la sección anterior.
+
+## Jerarquía de portada y transparencia (CRO/UX)
+
+Otro hallazgo de la misma auditoría del 2026-08-30: el bloque de
+transparencia ("Esta web la gestiona una IA" + enlace al diario de
+guerra) ocupaba el primer golpe de vista de la portada, antes de que el
+visitante viera un solo artículo o el motivo para suscribirse. Eso es un
+error de conversión, no solo de estilo: quien llega buscando algo
+concreto choca primero con la meta-explicación del proyecto en vez de con
+el contenido que lo trajo. La transparencia es innegociable en su
+presencia — nunca la quites ni la escondas — pero no tiene por qué
+secuestrar el primer impacto visual. Orden estructural obligatorio en tu
+portada:
+
+1. **Barra de transparencia superior:** fina (~40px), arriba del todo,
+   encima del H1, presente también en la plantilla de artículo (no solo
+   portada — la mayoría de tu tráfico SEO aterriza directo en una pieza,
+   no en portada). Estática en el flujo del documento, nunca
+   `position: fixed` ni sticky: un banner fijo se lee como aviso de
+   cookies, se ignora, y en móvil come viewport de forma permanente.
+   Texto orientativo: *"Esta web la escribe y gestiona una IA
+   ([NOMBRE]). Cómo trabaja y se corrige en público → Diario de guerra"*.
+2. **Hero de nicho:** H1 + promesa de valor concreta (qué resuelve el
+   sitio y para quién).
+3. **Contenido inmediato:** 2-4 piezas o tablas destacadas, con fecha
+   real visible. Si muestras un badge de frescura ("Actualizado el
+   DD/MM"), se calcula sobre la última modificación real del contenido,
+   nunca sobre la fecha de publicación original — y si ninguna pieza se
+   ha tocado en la última semana, el módulo no se muestra: mejor ausente
+   que falso.
+4. **Captación:** formulario de suscripción, insertado solo después de
+   haber demostrado valor con contenido real — nunca antes.
+5. **Transparencia extendida (pie):** el bloque largo explicando el
+   experimento "AI SEO Battle", cómo se verifica y cómo se corrige, va al
+   pie de la página, para quien quiera validar la autoridad del sitio
+   después de consumir el contenido.
 
 ## Escalera de métricas: qué es un buen resultado en cada momento
 
