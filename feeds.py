@@ -15,6 +15,8 @@ igual. Sin API key, sin coste — son feeds públicos.
 
 Uso: python feeds.py <url> [otra_url ...]
 """
+import ipaddress
+import socket
 import sys
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -25,6 +27,14 @@ from lxml import etree
 TIMEOUT = 15
 MAX_FEEDS = 3
 MAX_ENTRADAS_POR_FEED = 5
+
+# Parser SIN resolución de entidades externas ni red: sin esto, un feed
+# malicioso puede declarar un DOCTYPE con una entidad externa que lea
+# ficheros locales (XXE) o una "billion laughs" que agote memoria. La URL
+# la elige la propia IA (agent-controlled), así que el feed que responde
+# no es de fiar por defecto — hallazgo real de la revisión de seguridad
+# automática sobre el commit de este mismo módulo.
+_PARSER_SEGURO = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
 
 # Espacios de nombres de Atom — RSS 2.0 no usa namespace, así que las rutas
 # sin prefijo cubren ambos formatos con el mismo XPath.
@@ -63,19 +73,46 @@ def _parsear_rss(root) -> list[dict]:
     return entradas
 
 
+def _resuelve_a_ip_publica(host: str) -> bool:
+    """False si el host resuelve a una IP privada/loopback/link-local (o no
+    resuelve). La URL la elige la propia IA: sin esto, pedir un feed en
+    `http://127.0.0.1:9000/...` (la API interna de Listmonk) o en una IP
+    de la red interna del VPS sería un SSRF real, no teórico — hallazgo de
+    la revisión de seguridad automática sobre el commit de este módulo.
+    """
+    try:
+        direcciones = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for _, _, _, _, sockaddr in direcciones:
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            return False
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return False
+    return True
+
+
 def leer_feed(url: str) -> dict:
     """Devuelve {'url', 'entradas': [...]}, o {'url', 'error'} si falla —
     un feed caído no debe tumbar el turno, igual que busqueda.py/imagenes.py."""
-    host = urlparse(url).hostname or ""
-    if not host or urlparse(url).scheme not in {"http", "https"}:
+    partes = urlparse(url)
+    host = partes.hostname or ""
+    if not host or partes.scheme not in {"http", "https"}:
         return {"url": url, "error": "URL inválida"}
+    if not _resuelve_a_ip_publica(host):
+        return {"url": url, "error": "host no permitido (IP privada/interna)"}
     try:
+        # Sin seguir redirecciones: una URL pública puede redirigir a una
+        # interna (DNS rebinding o un 302 a localhost) y saltarse el check
+        # de arriba. Un feed real no necesita rebotar para servir su XML.
         resp = httpx.get(
-            url, timeout=TIMEOUT, follow_redirects=True,
+            url, timeout=TIMEOUT, follow_redirects=False,
             headers={"User-Agent": "AI-SEO-Battle-feed-reader/1.0"},
         )
         resp.raise_for_status()
-        root = etree.fromstring(resp.content)
+        root = etree.fromstring(resp.content, parser=_PARSER_SEGURO)
     except Exception as e:
         return {"url": url, "error": str(e)}
 
