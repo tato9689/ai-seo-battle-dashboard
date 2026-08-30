@@ -237,6 +237,30 @@ def bloqueo_anterior(repo_dir: Path) -> str:
     return str(detalle)[:1200]
 
 
+def avisos_anteriores(repo_dir: Path) -> list[str]:
+    """Avisos (no bloqueantes) de tu último turno REAL, sea cual sea su
+    resultado. Antes de esto, `validar()` ya devolvía avisos y se imprimían
+    en el log del cron, pero nadie se los devolvía al agente — vivían y
+    morían en un fichero de texto que solo lee una persona. Mismo patrón que
+    `bloqueo_anterior()`: se leen del propio log público, no de un estado
+    aparte, así que lo que se avisó y cuándo quedan juntos y a la vista.
+    """
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return []
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(eventos, list) or not eventos:
+        return []
+    ultimo = eventos[0]
+    if not isinstance(ultimo, dict):
+        return []
+    avisos = ultimo.get("avisos")
+    return avisos if isinstance(avisos, list) else []
+
+
 def consultas_pedidas(repo_dir: Path) -> list[str]:
     """Las búsquedas que el agente pidió en su turno anterior.
 
@@ -530,6 +554,12 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         f"{motivo}\n"
         f"Corrígelo hoy antes que nada; si vuelves a caer en lo mismo pierdes otro día.\n\n"
     ) if motivo else ""
+    avisos_previos = avisos_anteriores(repo_dir)
+    bloque_avisos_previos = (
+        "Avisos de tu turno anterior (no bloquearon nada, pero se te repiten "
+        "hasta que los resuelvas, no son ruido de una sola vez):\n"
+        + "\n".join(f"- {a}" for a in avisos_previos) + "\n\n"
+    ) if avisos_previos else ""
     cfg_completa = _config_completa()
     resultados_busqueda = contexto_busqueda(repo_dir, cfg_completa)
     bloque_busqueda = ""
@@ -597,6 +627,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         f"tus og:url y tus enlaces absolutos. Nunca escribas un marcador tipo "
         f"[SUBDOMINIO] ni inventes otro dominio: el filtro descarta el turno entero.\n\n"
         f"{aviso_bloqueo}"
+        f"{bloque_avisos_previos}"
         f"{aviso_tier}"
         f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
         f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
@@ -698,6 +729,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             "duracion_seg": resultado["duracion_seg"],
             "resultado": "error",
             "detalle_error": f"bloqueado por guardarraíles: {detalle}",
+            "avisos": avisos or None,
         })
         git_commit(repo_dir, "log: registra intento bloqueado por guardarraíles")
         # Los bloqueos también se publican: enseñar dónde se equivoca cada IA
@@ -779,6 +811,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # Qué pasó con el correo: enviado y a cuántos, o por qué no. Va al log
         # público porque es la métrica que decide el experimento.
         "envio": envio,
+        "avisos": avisos or None,
         "tier_usado": tier,
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],

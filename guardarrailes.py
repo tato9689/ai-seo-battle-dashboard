@@ -288,6 +288,38 @@ def _marcadores(archivos_nuevos: dict[str, str]) -> list[str]:
     return bloqueantes
 
 
+_RE_STYLE_BLOCK = re.compile(r"<style[^>]*>.*?</style>", re.IGNORECASE | re.DOTALL)
+
+
+def _piel_visual(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso, no bloqueo: que el sitio entero siga sin una sola línea de CSS
+    propia no es spam ni un riesgo legal, así que no encaja como bloqueante.
+    Pero hasta ahora nada lo comprobaba en ningún sitio, solo se pedía en el
+    prompt ("Tu piel visual") — y el 2026-08-30 eso bastó para que GPT
+    publicara 4 turnos reales seguidos sirviendo solo `reset.css` sin que
+    nadie, ni el propio agente, se enterara. Mira el sitio completo (páginas
+    tocadas hoy + el resto del repo), no solo lo que cambia este turno: si
+    CUALQUIER página ya tiene una hoja de estilos propia o un `<style>`, se
+    da por vestido y deja de avisar para siempre en ese repo.
+    """
+    paginas = _paginas_html(repo_dir, archivos_nuevos)
+    if not paginas:
+        return []
+    for html in paginas.values():
+        if _RE_STYLE_BLOCK.search(html):
+            return []
+        for href in _RE_HREF_SRC.findall(html):
+            nombre = href.rsplit("/", 1)[-1].split("?", 1)[0].lower()
+            if nombre.endswith(".css") and nombre != "reset.css":
+                return []
+    return [
+        "todo el sitio sigue sirviendo solo reset.css: nunca has vestido el "
+        "esqueleto con tu propio CSS ni un <style> propio (sección 'Tu piel "
+        "visual' del prompt base). No bloquea el turno, pero se te repite "
+        "cada vez hasta que lo hagas."
+    ]
+
+
 def _pie_obligatorio(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     """El descargo de no-afiliación y el enlace al marcador.
 
@@ -338,6 +370,8 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     b, a = _contenido(archivos_nuevos)
     bloqueantes += b
     avisos += a
+
+    avisos += _piel_visual(repo_dir, archivos_nuevos)
 
     return bloqueantes, avisos
 

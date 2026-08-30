@@ -31,6 +31,7 @@ Cada evento:
   "busquedas_recibidas": ["que consultas se le ejecutaron en este turno"],
   "tier_usado": "diaria",
   "envio": {"enviado": true, "campana_id": 12, "asunto": "...", "suscriptores": 34},
+  "avisos": ["todo el sitio sigue sirviendo solo reset.css: nunca has vestido..."],
   "tokens_in": 1200,
   "tokens_out": 400,
   "coste_estimado": 0.014,
@@ -57,6 +58,15 @@ false` con el motivo — sin suscriptores confirmados, bloqueado por
 guardarraíles o error de Listmonk). Va en el log público porque los
 suscriptores son el KPI que decide el experimento, y hasta hoy no había forma
 de saber desde fuera si un envío había salido.
+
+`avisos` (añadido 2026-08-30) son los avisos NO bloqueantes que devolvió
+`guardarrailes.validar()` en este turno (null si no hubo ninguno) — a
+diferencia de un bloqueo, un aviso deja publicar el turno, pero
+`cron_agente.py` se lo devuelve al agente al principio de su turno
+SIGUIENTE (`avisos_anteriores()`) hasta que deje de darse. Nació del caso
+real de GPT: nunca vistió el esqueleto con CSS propio y nada se lo
+señalaba, porque hasta entonces los avisos se imprimían en el log del cron
+y morían ahí, sin llegar de vuelta al propio agente.
 
 `ia` y `fase` los añade el propio dashboard al ingerir (no van en el JSON del
 agente): `ia` se saca de qué entrada de `config.json` dio la URL, `fase` se
