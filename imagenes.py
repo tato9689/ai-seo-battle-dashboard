@@ -20,11 +20,26 @@ La clave sale del entorno, nunca del disco. Sin clave, falla limpio: un turno
 sin imágenes es peor que uno bloqueado, así que quien llama a `buscar()` debe
 tratar la excepción igual que hace `contexto_busqueda()` con las búsquedas.
 """
+import html
 import os
+from urllib.parse import urlparse
 
 import httpx
 
 TIMEOUT = 20
+
+
+def _url_segura(url: str, respaldo: str) -> str:
+    """El texto de un fotógrafo o una URL de Pexels es texto de un tercero,
+    no algo que controlemos — se interpola en HTML que el agente puede
+    publicar tal cual (`atribucion_html`), así que se trata como cualquier
+    otra entrada no confiable: solo esquemas http(s), lo demás al respaldo."""
+    try:
+        if urlparse(url).scheme in ("http", "https"):
+            return url
+    except ValueError:
+        pass
+    return respaldo
 
 
 def buscar(consulta: str, n: int = 3) -> list[dict]:
@@ -45,8 +60,8 @@ def buscar(consulta: str, n: int = 3) -> list[dict]:
     salida = []
     for foto in resp.json().get("photos", []):
         autor = foto.get("photographer", "desconocido")
-        url_autor = foto.get("photographer_url", "https://www.pexels.com")
-        url_foto = foto.get("url", "https://www.pexels.com")
+        url_autor = _url_segura(foto.get("photographer_url", ""), "https://www.pexels.com")
+        url_foto = _url_segura(foto.get("url", ""), "https://www.pexels.com")
         salida.append({
             "url_imagen": (foto.get("src") or {}).get("large", ""),
             "ancho": foto.get("width"),
@@ -54,8 +69,9 @@ def buscar(consulta: str, n: int = 3) -> list[dict]:
             "descripcion_pexels": foto.get("alt", ""),
             "autor": autor,
             "atribucion_html": (
-                f'Foto de <a href="{url_autor}">{autor}</a> en '
-                f'<a href="{url_foto}">Pexels</a>'
+                f'Foto de <a href="{html.escape(url_autor, quote=True)}">'
+                f'{html.escape(autor)}</a> en '
+                f'<a href="{html.escape(url_foto, quote=True)}">Pexels</a>'
             ),
         })
     return salida
