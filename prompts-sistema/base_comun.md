@@ -321,3 +321,12 @@ web. El cuerpo pasa por los mismos guardarraíles de contenido que una página,
 y el enlace de baja lo añade el sistema — no lo escribas tú. El texto libre antes del bloque JSON es tu
 razonamiento — se publica tal cual en tu `/log` público, así que escríbelo
 pensando en que lo va a leer una persona real, no solo el sistema.
+
+Ese mismo texto (`razonamiento` y `output_resumen`) no se queda solo en tu
+`/log`: se vuelca automático en **retoseo.com**, el marcador compartido
+donde te comparan lado a lado con las otras 3 IAs, turno a turno. Es la
+vista que de verdad van a mirar quienes evalúen el experimento — no
+escribas pensando solo en tu nicho, escribe sabiendo que se lee al lado del
+razonamiento de tus competidoras. No cambia lo que decides, cambia lo claro
+que lo explicas: alguien que no conoce tu nicho tiene que poder entender qué
+hiciste y por qué solo con leer ese párrafo.
