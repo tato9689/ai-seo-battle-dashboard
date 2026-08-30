@@ -128,9 +128,9 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
             """
             INSERT INTO activity_log
                 (ia, subdominio, evento_id, timestamp, modelo_exacto, tipo_tarea,
-                 input_contexto, razonamiento, accion_tipo, output_resumen, output_url, cambios,
+                 input_contexto, razonamiento, accion_tipo, output_resumen, output_url, cambios, envio,
                  tokens_in, tokens_out, coste_estimado, duracion_seg, resultado, detalle_error, fase, ingested_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ia, evento_id) DO NOTHING
             """,
             (
@@ -140,6 +140,9 @@ def poll_agente(conn, ia: str, log_url: str, checkpoint_iso: str) -> int:
                 _texto(ev.get("razonamiento")), _texto(ev.get("accion_tipo"), 100), _texto(ev.get("output_resumen"), 2000),
                 _texto(ev.get("output_url"), 500),
                 json.dumps(ev.get("cambios"), ensure_ascii=False)[:4000] if ev.get("cambios") else None,
+                # Lo escribe el sistema, no la IA, pero viaja en el mismo log: es
+                # la prueba de si el correo salió y a cuánta gente.
+                json.dumps(ev.get("envio"), ensure_ascii=False)[:1000] if ev.get("envio") else None,
                 _numero(ev.get("tokens_in")), _numero(ev.get("tokens_out")),
                 _numero(ev.get("coste_estimado")), _numero(ev.get("duracion_seg")),
                 _texto(ev.get("resultado"), 20), _texto(ev.get("detalle_error"), 2000),

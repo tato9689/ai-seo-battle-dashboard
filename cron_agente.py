@@ -333,6 +333,44 @@ def contexto_busqueda(repo_dir: Path, cfg: dict) -> dict:
     return salida
 
 
+MODELOS_VISTOS = DASHBOARD_DIR / "cache" / "modelos_vistos.json"
+
+
+def avisar_si_cambia_modelo(ia: str, tier: str, servido: str | None):
+    """Vigila que el modelo que sirve la API no cambie por debajo.
+
+    Solo GPT tiene los tres tiers con snapshot fechado; Anthropic y Google no
+    publican ids con fecha de sus familias actuales, así que sus alias pueden
+    moverse solos. Si eso pasa a mitad de experimento, la comparación
+    antes/después del checkpoint deja de medir lo mismo — y sin este aviso no
+    habría forma de enterarse hasta revisar el log a mano meses después.
+
+    Se guarda en cache/ (ignorado por git) porque es estado de ejecución, no
+    parte del experimento: el dato bueno vive en `modelo_exacto` de cada
+    evento del log público.
+    """
+    if not servido:
+        return
+    clave = f"{ia}/{tier}"
+    try:
+        MODELOS_VISTOS.parent.mkdir(parents=True, exist_ok=True)
+        vistos = json.loads(MODELOS_VISTOS.read_text()) if MODELOS_VISTOS.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        vistos = {}
+    anterior = vistos.get(clave)
+    if anterior and anterior != servido:
+        avisar_telegram(
+            f"🔄 AI SEO Battle: el modelo de {ia} ({tier}) cambió por debajo — "
+            f"antes {anterior}, ahora {servido}. Afecta a la comparación del experimento."
+        )
+    if anterior != servido:
+        vistos[clave] = servido
+        try:
+            MODELOS_VISTOS.write_text(json.dumps(vistos, ensure_ascii=False, indent=2))
+        except OSError as e:
+            print(f"no se pudo guardar {MODELOS_VISTOS}: {e}", file=sys.stderr)
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -541,6 +579,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         tier = "diaria"
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
     texto = resultado["texto"]
+    avisar_si_cambia_modelo(ia, tier, resultado.get("modelo"))
 
     if texto.startswith("[sin ") and texto.endswith("configurada]"):
         print(f"[{ia}] {texto}")

@@ -43,6 +43,11 @@ MAX_SALIDA = 16000
 # modelos distintos y con precios distintos**: si coinciden, ese agente no
 # tiene ninguna decisión que tomar y el experimento deja de ser simétrico.
 MODELOS = {
+    # Anthropic no publica variante fechada de la familia 5 (comprobado en
+    # /v1/models el 2026-08-30: claude-sonnet-5 y claude-opus-5 solo existen
+    # como alias; los únicos ids con fecha son de la familia 4.x). El diario
+    # sí queda fijado porque haiku 4.5 sí la tiene. Para lo demás, la red es
+    # el aviso de cambio de modelo servido que hace cron_agente.py.
     "claude": {
         "diaria": "claude-haiku-4-5-20251001",
         "semanal": "claude-sonnet-5",
@@ -52,10 +57,17 @@ MODELOS = {
         # gpt-5.2-mini NO EXISTE (404 en la API): habría hecho fallar todas
         # las ejecuciones diarias de GPT. Se pasa a la familia 5.4, que tiene
         # las dos variantes de la misma generación.
-        "diaria": "gpt-5.4-mini",
-        "semanal": "gpt-5.4",
+        # Snapshots fechados, no alias: el experimento dura 10 meses y si
+        # OpenAI mueve `gpt-5.4-mini` a mitad de camino, la comparación
+        # antes/después del checkpoint deja de medir lo mismo. Verificados
+        # contra /v1/models el 2026-08-30.
+        "diaria": "gpt-5.4-mini-2026-03-17",
+        "semanal": "gpt-5.4-2026-03-05",
         "consejo": "gpt-5.5-pro-2026-04-23",
     },
+    # Google tampoco da ids fechados en su ListModels (verificado el
+    # 2026-08-30): gemini-3.7-flash y gemini-3.1-* son alias movibles. Mismo
+    # apaño que en Claude: se vigila el modelo que devuelve la API.
     "gemini": {
         # Antes ambas eran gemini-3.7-flash: Gemini no tenía elección posible.
         "diaria": "gemini-3.1-flash-lite",

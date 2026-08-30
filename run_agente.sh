@@ -30,6 +30,18 @@ sed -e "s/\[NOMBRE DEL PROYECTO\/NEWSLETTER\]/${IA}.${DOM}/g" \
     -e "s/\[FECHA\]/$(date -u +%F)/g" \
     /root/ai-seo-battle-dashboard/esqueleto-web/privacidad-TEMPLATE.html \
     > "$DESTINO/privacidad.html"
+# Red de seguridad para el marcador [SUBDOMINIO]. La piel semilla lo traía
+# dentro del canonical, del og:url, del JSON-LD y de la línea Sitemap del
+# robots.txt, y así estuvo publicado en los 4 sitios el día 0: un canonical
+# que apunta a un host inventado le dice a Google que la URL buena es otra, y
+# eso no se ve hasta semanas después en Search Console. El guardarraíl de
+# marcadores solo mira lo que escribe el agente, y el robots.txt no lo
+# escribe él, así que la última palabra tiene que estar aquí. Sustituye el
+# marcador, no reescribe el fichero: lo que el agente añadiera se conserva.
+grep -rl '\[SUBDOMINIO\]' "$DESTINO" 2>/dev/null | while read -r f; do
+  sed -i "s/\[SUBDOMINIO\]/${IA}.${DOM}/g" "$f"
+done
+
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/verificacion.py "$IA" "$DESTINO"
 chown -R root:caddy "$DESTINO"
 

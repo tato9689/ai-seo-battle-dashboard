@@ -141,6 +141,8 @@ ESTILO = """
   .dec-pie { margin-top: 10px; font-size: .76rem; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .dec.bloq { border-color: color-mix(in oklab, var(--error) 45%, var(--border)); }
   .motivo { margin: 8px 0 0; color: var(--error); font-size: .84rem; }
+  .dec-envio { margin: 8px 0 0; font-size: .84rem; color: var(--text-2); }
+  .dec-envio.no { color: var(--error); }
   .motivo b { font-weight: 600; }
 
   .aviso { border: 1px solid color-mix(in oklab, var(--s4) 50%, var(--border));
@@ -351,6 +353,26 @@ def tarjeta_decision(ev, mostrar_ia: bool = True, bloqueada: bool = False) -> st
             partes.append(
                 f'<details class="razon"><summary>Leer su razonamiento completo</summary>'
                 f'<p class="dec-razon">{esc(razon)}</p></details>'
+            )
+
+    # El correo: si salió y a cuánta gente, o por qué no. Los suscriptores son
+    # el KPI que decide el experimento, así que un envío fallido no puede
+    # quedarse solo en el log de Telegram — se ve aquí, al lado de la decisión
+    # que lo generó.
+    try:
+        envio = json.loads(ev["envio"]) if ev["envio"] else None
+    except (json.JSONDecodeError, TypeError, IndexError):
+        envio = None
+    if isinstance(envio, dict):
+        if envio.get("enviado"):
+            asunto = esc(envio.get("asunto") or "newsletter")
+            partes.append(
+                f'<p class="dec-envio">📬 Newsletter enviada a '
+                f'<b>{esc(str(envio.get("suscriptores", "?")))}</b> suscriptores — «{asunto}»</p>'
+            )
+        else:
+            partes.append(
+                f'<p class="dec-envio no">📭 No salió el correo: {esc(str(envio.get("motivo") or "sin motivo"))}</p>'
             )
 
     # Qué archivos tocó y cuánto: el "qué" al lado del "por qué". El enlace al

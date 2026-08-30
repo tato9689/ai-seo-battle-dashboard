@@ -23,6 +23,7 @@ MIGRACIONES = {
     ],
     "activity_log": [
         ("cambios", "TEXT"),
+        ("envio", "TEXT"),
     ],
 }
 

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
     output_resumen TEXT,
     output_url TEXT,                   -- link a commit/versión completa para poder hacer diffs
     cambios TEXT,                      -- JSON: [{archivo, anadidas, quitadas}] del commit, para ver el qué junto al porqué
+    envio TEXT,                        -- JSON del envío de la newsletter: {enviado, campana_id, suscriptores} o el motivo de por qué no salió
     tokens_in INTEGER,
     tokens_out INTEGER,
     coste_estimado REAL,
