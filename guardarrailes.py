@@ -288,7 +288,7 @@ def _marcadores(archivos_nuevos: dict[str, str]) -> list[str]:
     return bloqueantes
 
 
-_RE_STYLE_BLOCK = re.compile(r"<style[^>]*>.*?</style>", re.IGNORECASE | re.DOTALL)
+_RE_STYLE_BLOCK = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
 
 
 def _piel_visual(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
@@ -301,16 +301,26 @@ def _piel_visual(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
     tocadas hoy + el resto del repo), no solo lo que cambia este turno: si
     CUALQUIER página ya tiene una hoja de estilos propia o un `<style>`, se
     da por vestido y deja de avisar para siempre en ese repo.
+
+    Endurecido 2026-08-30 (hallazgo real de la auditoría de código): la
+    versión original se daba por satisfecha con un `<style></style>` vacío
+    o con un `<link>` a un fichero .css que no existe en el repo — un match
+    trivial o accidental apagaba el aviso PARA SIEMPRE, justo el escenario
+    que el check existe para pillar. Ahora exige contenido real dentro del
+    `<style>` y que el fichero enlazado exista de verdad.
     """
     paginas = _paginas_html(repo_dir, archivos_nuevos)
     if not paginas:
         return []
     for html in paginas.values():
-        if _RE_STYLE_BLOCK.search(html):
+        m = _RE_STYLE_BLOCK.search(html)
+        if m and m.group(1).strip():
             return []
         for href in _RE_HREF_SRC.findall(html):
             nombre = href.rsplit("/", 1)[-1].split("?", 1)[0].lower()
-            if nombre.endswith(".css") and nombre != "reset.css":
+            if nombre.endswith(".css") and nombre != "reset.css" and (
+                nombre in archivos_nuevos or (repo_dir / nombre).exists()
+            ):
                 return []
     return [
         "todo el sitio sigue sirviendo solo reset.css: nunca has vestido el "

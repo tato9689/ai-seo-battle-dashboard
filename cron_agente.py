@@ -45,6 +45,8 @@ import portada  # noqa: E402
 import presupuesto  # noqa: E402
 import busqueda  # noqa: E402
 import imagenes  # noqa: E402
+import feeds  # noqa: E402
+import dataforseo  # noqa: E402
 import tendencias  # noqa: E402
 import poller  # noqa: E402
 import envio_newsletter  # noqa: E402
@@ -115,29 +117,105 @@ def contenido_actual_archivos(repo_dir: Path) -> str:
     return "\n\n".join(partes)
 
 
+_ESCAPES_JSON_VALIDOS = set('"\\/bfnrtu')
+
+
+def _reparar_barras_invertidas(bruto: str) -> str:
+    """Escapa cada `\\` que NO forme parte de un escape JSON válido,
+    escaneando de izquierda a derecha (no con regex): una versión con
+    regex sin estado se equivoca en cuanto hay dos barras seguidas — la
+    segunda barra de un `\\\\` ya válido se malinterpreta como el inicio
+    de OTRO escape a medias y se duplica otra vez, dejando triple barra.
+    Probado contra el caso real: LaTeX con `\\Delta`, `\\mu`, `\\cdot`
+    mezclado con `\\n`/`\\"` ya bien escapados en la misma cadena.
+    """
+    salida = []
+    i, n = 0, len(bruto)
+    while i < n:
+        c = bruto[i]
+        if c == "\\" and i + 1 < n:
+            if bruto[i + 1] in _ESCAPES_JSON_VALIDOS:
+                salida.append(bruto[i:i + 2])  # escape válido, se deja tal cual
+                i += 2
+                continue
+            salida.append("\\\\")  # barra suelta: se escapa como barra literal
+            i += 1
+            continue
+        salida.append(c)
+        i += 1
+    return "".join(salida)
+
+
 def extraer_bloque_json(texto: str) -> dict | None:
-    m = re.search(r"```json\s*(\{.*?\})\s*```", texto, re.DOTALL)
-    if m:
+    """Corregido 2026-08-30 (bug real encontrado probando esta misma
+    función contra una respuesta de Gemini con un `<style>` grande): la
+    versión anterior buscaba el cierre con `\\{.*?\\}` — no greedy — así
+    que en cuanto el contenido del JSON llevaba HTML con CSS embebido (que
+    tiene sus propias llaves `{`/`}` de sobra), el regex se paraba en la
+    PRIMERA `}` que encontraba, muy por delante del cierre real, y
+    `json.loads` fallaba con un fragmento truncado. La respuesta era
+    válida y el turno se perdía igual — justo el escenario que se vuelve
+    más probable con el prompt de "piel con intención" de hoy, que pide
+    más `<style>` propio, no menos.
+
+    Ahora se localizan los MARCADORES del cercado (```json ... ```) por
+    posición, no por contenido, y se decodifica lo que hay entre medias
+    con el parser de verdad (que sí entiende de llaves anidadas). La red
+    de seguridad para cuando falta el cercado sigue igual, pero ahora
+    tolera que sobren backticks de cierre después del JSON.
+    """
+    inicio = texto.find("```json")
+    if inicio != -1:
+        cierre = texto.find("```", inicio + len("```json"))
+        bruto = texto[inicio + len("```json"):cierre if cierre != -1 else None].strip()
         try:
-            return json.loads(m.group(1))
+            obj = json.loads(bruto)
+            if isinstance(obj, dict):
+                return obj
         except json.JSONDecodeError:
-            pass
+            # Reparación de última instancia: pasó de verdad con gemini el
+            # 2026-08-30 en un artículo de física (Ley de Darcy) — escribió
+            # notación LaTeX ("$\Delta P$", "$\mu$") dentro de un string sin
+            # escapar la barra invertida, que JSON exige (`\\` para una
+            # barra literal). No es un fallo de ESTE parser: el JSON que
+            # envió el modelo es inválido de origen. Se repara la barra
+            # invertida solo cuando NO forma parte de un escape JSON válido
+            # (\" \\ \/ \b \f \n \r \t \uXXXX) — así no se toca un escape
+            # que ya estaba bien.
+            reparado = _reparar_barras_invertidas(bruto)
+            try:
+                obj = json.loads(reparado)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                pass
     # Red de seguridad: si el modelo se salta el cercado ```json``` pero el
     # JSON en sí es válido (pasó de verdad con gpt el 2026-08-30 — dos
     # párrafos de razonamiento y el bloque sin cercar detrás), tirar el turno
     # entero por un detalle cosmético desperdicia contenido bueno y gasto
-    # real. El contrato exige que sea el bloque FINAL, así que solo cuenta el
-    # que consume el texto hasta el final (evita colarse con un '{' suelto
-    # de en medio del razonamiento).
+    # real. El contrato exige que sea el bloque FINAL: se acepta el primer
+    # objeto decodificable cuyo resto de texto, quitando espacios Y
+    # backticks de cierre sueltos, quede vacío — así no se cuela un '{'
+    # suelto de en medio del razonamiento, pero tampoco molesta un
+    # cercado a medio poner.
     decoder = json.JSONDecoder()
     pos = texto.find("{")
     while pos != -1:
         try:
             obj, fin = decoder.raw_decode(texto, pos)
-            if isinstance(obj, dict) and not texto[fin:].strip():
+            if isinstance(obj, dict) and not texto[fin:].strip().strip("`").strip():
                 return obj
         except json.JSONDecodeError:
-            pass
+            # Mismo arreglo que la ruta con cercado: se repara la cola desde
+            # `pos` (nunca lo de antes, que es razonamiento libre y puede
+            # llevar barras sueltas de sobra que no hace falta tocar).
+            try:
+                cola_reparada = _reparar_barras_invertidas(texto[pos:])
+                obj, fin = decoder.raw_decode(cola_reparada)
+                if isinstance(obj, dict) and not cola_reparada[fin:].strip().strip("`").strip():
+                    return obj
+            except json.JSONDecodeError:
+                pass
         pos = texto.find("{", pos + 1)
     return None
 
@@ -238,12 +316,21 @@ def bloqueo_anterior(repo_dir: Path) -> str:
 
 
 def avisos_anteriores(repo_dir: Path) -> list[str]:
-    """Avisos (no bloqueantes) de tu último turno REAL, sea cual sea su
-    resultado. Antes de esto, `validar()` ya devolvía avisos y se imprimían
-    en el log del cron, pero nadie se los devolvía al agente — vivían y
-    morían en un fichero de texto que solo lee una persona. Mismo patrón que
-    `bloqueo_anterior()`: se leen del propio log público, no de un estado
-    aparte, así que lo que se avisó y cuándo quedan juntos y a la vista.
+    """Avisos (no bloqueantes) de tu último turno REAL que pasó por
+    guardarrailes.validar(), sea cual sea su resultado. Antes de esto,
+    `validar()` ya devolvía avisos y se imprimían en el log del cron, pero
+    nadie se los devolvía al agente — vivían y morían en un fichero de
+    texto que solo lee una persona. Mismo patrón que `bloqueo_anterior()`:
+    se leen del propio log público, no de un estado aparte, así que lo que
+    se avisó y cuándo quedan juntos y a la vista.
+
+    Corregido 2026-08-30 (hallazgo real de la auditoría de código): mirar
+    solo `eventos[0]` perdía el aviso en silencio en cuanto el turno
+    siguiente era de un tipo que nunca pasa por `validar()` (newsletter
+    saltada por 0 suscriptores, bloqueo por presupuesto, JSON sin parsear)
+    — justo el caso normal de los primeros meses. Ahora se busca hacia
+    atrás el primer evento que de verdad tiene la clave `avisos` (aunque
+    sea `null`), no el primero de la lista sea cual sea su tipo.
     """
     log_path = repo_dir / "log.json"
     if not log_path.exists():
@@ -252,13 +339,14 @@ def avisos_anteriores(repo_dir: Path) -> list[str]:
         eventos = json.loads(log_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
-    if not isinstance(eventos, list) or not eventos:
+    if not isinstance(eventos, list):
         return []
-    ultimo = eventos[0]
-    if not isinstance(ultimo, dict):
-        return []
-    avisos = ultimo.get("avisos")
-    return avisos if isinstance(avisos, list) else []
+    for ev in eventos:
+        if not isinstance(ev, dict) or "avisos" not in ev:
+            continue
+        avisos = ev.get("avisos")
+        return avisos if isinstance(avisos, list) else []
+    return []
 
 
 def consultas_pedidas(repo_dir: Path) -> list[str]:
@@ -350,6 +438,80 @@ def contexto_imagenes(repo_dir: Path) -> dict:
         except Exception as e:
             salida[consulta] = {"error": str(e)}
     return salida
+
+
+def feeds_pedidos(repo_dir: Path) -> list[str]:
+    """Mismo patrón que `imagenes_pedidas`: URLs de feed (RSS/Atom, incluido
+    `.../releases.atom` de GitHub) que el agente pidió seguir en su turno
+    anterior, vía `feeds_siguiente_turno` en el log público. Añadido
+    2026-08-30 tras la auditoría de herramientas (pedido real de Claude y
+    DeepSeek: detectar releases/cambios de su nicho sin tener que buscarlo
+    a mano cada turno)."""
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return []
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(eventos, list):
+        return []
+    for ev in eventos:
+        if not isinstance(ev, dict):
+            continue
+        pedidas = ev.get("feeds_siguiente_turno")
+        if isinstance(pedidas, list) and pedidas:
+            return [str(u)[:500] for u in pedidas if isinstance(u, str) and u.strip()][:feeds.MAX_FEEDS]
+    return []
+
+
+def contexto_feeds(repo_dir: Path) -> dict:
+    """Lee los feeds que el agente pidió. Un feed caído o con formato raro
+    no tumba el turno — se devuelve el error de ESE feed, el resto sigue."""
+    urls = feeds_pedidos(repo_dir)
+    if not urls:
+        return {}
+    try:
+        return feeds.leer_varios(urls)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def keywords_pedidas(repo_dir: Path) -> list[str]:
+    """Mismo patrón: keywords que el agente pidió consultar en DataForSEO
+    (volumen real + dificultad), vía `keywords_siguiente_turno`. Añadido
+    2026-08-30 tras la auditoría de herramientas (pedido real de Gemini:
+    autocompletado/Trends dan dirección, no escala)."""
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return []
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(eventos, list):
+        return []
+    for ev in eventos:
+        if not isinstance(ev, dict):
+            continue
+        pedidas = ev.get("keywords_siguiente_turno")
+        if isinstance(pedidas, list) and pedidas:
+            return [str(k)[:100] for k in pedidas if isinstance(k, str) and k.strip()][:5]
+    return []
+
+
+def contexto_dataforseo(repo_dir: Path) -> dict:
+    """Consulta DataForSEO para las keywords pedidas. Comparte tope de
+    llamadas entre las 4 (ver dataforseo.py) — si el tope compartido ya se
+    agotó ese mes, el turno sigue con un aviso en el propio dato, no con un
+    fallo."""
+    keywords = keywords_pedidas(repo_dir)
+    if not keywords:
+        return {}
+    try:
+        return dataforseo.volumen_y_dificultad(keywords)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 MODELOS_VISTOS = DASHBOARD_DIR / "cache" / "modelos_vistos.json"
@@ -579,6 +741,28 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             "no lo resumas ni lo quites:\n"
             f"{json.dumps(resultados_imagenes, ensure_ascii=False)}\n\n"
         )
+    resultados_feeds = contexto_feeds(repo_dir)
+    bloque_feeds = ""
+    if resultados_feeds:
+        bloque_feeds = (
+            "Feeds (RSS/Atom) que pediste seguir en tu turno anterior — "
+            "incluye `.../releases.atom` de GitHub si seguiste un repo. Un "
+            "feed nuevo o cambiado desde ayer puede ser tu disparador del "
+            "turno de hoy:\n"
+            f"{json.dumps(resultados_feeds, ensure_ascii=False)}\n\n"
+        )
+    resultados_dataforseo = contexto_dataforseo(repo_dir)
+    bloque_dataforseo = ""
+    if resultados_dataforseo:
+        bloque_dataforseo = (
+            "Volumen mensual real y dificultad de las keywords que pediste "
+            "en tu turno anterior (DataForSEO — tope compartido entre las "
+            "4, puede venir vacío si ya se agotó ese mes). `competencia` es "
+            "de pujas de Google Ads, no es dificultad SEO real; usa "
+            "`dificultad` para eso, y trátala como null si no hay dato "
+            "para keywords muy long-tail:\n"
+            f"{json.dumps(resultados_dataforseo, ensure_ascii=False)}\n\n"
+        )
 
     # Freno de gasto ANTES de llamar. El límite de la consola del proveedor es
     # la red final, pero salta de golpe y deja al agente mudo sin explicación;
@@ -633,6 +817,8 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
         f"{bloque_busqueda}"
         f"{bloque_imagenes}"
+        f"{bloque_feeds}"
+        f"{bloque_dataforseo}"
         f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
     )
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
@@ -647,6 +833,16 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     if datos is None:
         print(f"[{ia}] no se pudo parsear el bloque JSON de la respuesta — no se aplica nada.", file=sys.stderr)
         print(texto)
+        if dry_run:
+            # Hallazgo real de la auditoría de código (encontrado probando
+            # este mismo turno en dry-run contra gemini): esta rama
+            # escribía y commiteaba SIEMPRE, ignorando `dry_run` — al
+            # revés que el resto de la función, que sí lo respeta. Dos
+            # commits reales de prueba llegaron a /root/aisb-gemini antes
+            # de pillarlo. `--dry-run` significa no tocar disco, sin
+            # excepciones por el tipo de fallo.
+            print("--dry-run: no se registra ni commitea nada (aquí también).")
+            return
         # Se registra igual que un bloqueo de guardarraíles: antes esto
         # devolvía sin dejar rastro, así que el turno desaparecía del log
         # público sin explicación y el siguiente turno no se enteraba de por
@@ -755,6 +951,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     # el log. El cuerpo pasa por los guardarraíles de contenido igual que una
     # página — es lo mismo que se publica, pero llegando a bandejas reales.
     envio = None
+    avisos_nl: list[str] = []
     payload = datos.get("newsletter") or {}
     if isinstance(payload, dict) and payload.get("cuerpo_html") and not dry_run:
         bloq_nl, avisos_nl = guardarrailes.validar_newsletter(payload.get("cuerpo_html", ""))
@@ -808,10 +1005,21 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # turno, y qué le llegó de las que pidió en el anterior.
         "imagenes_siguiente_turno": datos.get("imagenes_siguiente_turno"),
         "imagenes_recibidas": sorted(resultados_imagenes) or None,
+        # Mismo patrón: feeds RSS/Atom para el próximo turno, y los que
+        # llegaron de los que pidió en el anterior. Añadido 2026-08-30.
+        "feeds_siguiente_turno": datos.get("feeds_siguiente_turno"),
+        "feeds_recibidos": sorted(resultados_feeds) or None,
+        # Igual con las keywords consultadas en DataForSEO. Añadido 2026-08-30.
+        "keywords_siguiente_turno": datos.get("keywords_siguiente_turno"),
+        "keywords_recibidas": sorted(resultados_dataforseo) or None,
         # Qué pasó con el correo: enviado y a cuántos, o por qué no. Va al log
         # público porque es la métrica que decide el experimento.
         "envio": envio,
-        "avisos": avisos or None,
+        # Avisos de la página + del cuerpo de la newsletter (si esto era un
+        # turno semanal) juntos: antes de esto, avisos_nl se imprimía en el
+        # log del cron y se perdía, exactamente el bug que este mecanismo
+        # existe para tapar — hallazgo real de la auditoría de código.
+        "avisos": (avisos + avisos_nl) or None,
         "tier_usado": tier,
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],

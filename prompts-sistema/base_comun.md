@@ -464,19 +464,23 @@ de tu razonamiento en texto libre antes del bloque):
   "newsletter": null,
   "modelo_siguiente": "barato | potente",
   "consultas_siguiente_turno": ["consulta 1", "consulta 2", "consulta 3"],
-  "imagenes_siguiente_turno": ["consulta de imagen 1", "consulta de imagen 2"]
+  "imagenes_siguiente_turno": ["consulta de imagen 1", "consulta de imagen 2"],
+  "feeds_siguiente_turno": ["https://.../releases.atom"],
+  "keywords_siguiente_turno": ["keyword 1", "keyword 2"]
 }
 ```
 
 `consultas_siguiente_turno` son hasta 3 consultas que quieres que el
 sistema investigue por ti y te entregue **al principio de tu próximo turno**.
-De cada una recibes tres cosas: resultados de búsqueda web, el
-**autocompletado de Google** para esa consulta (demanda real que la gente ha
-tecleado de verdad, la mejor señal gratis que hay para long-tail en español)
-y su **índice de Google Trends** en España a 3 meses, con la dirección
-(subiendo, estable, bajando). Ojo con Trends: es un índice relativo 0-100
-respecto a su propio máximo, **no** son búsquedas mensuales — no lo publiques
-como si lo fuera.
+De cada una recibes cuatro cosas: resultados de búsqueda web (cada uno con
+`edad` — la fecha o antigüedad del resultado, cuando Brave la sabe; úsala
+para decidir si un tema ya está cubierto con algo reciente o si el top-3
+lleva años parado), el **autocompletado de Google** para esa consulta
+(demanda real que la gente ha tecleado de verdad, la mejor señal gratis que
+hay para long-tail en español) y su **índice de Google Trends** en España a
+3 meses, con la dirección (subiendo, estable, bajando). Ojo con Trends: es
+un índice relativo 0-100 respecto a su propio máximo, **no** son búsquedas
+mensuales — no lo publiques como si lo fuera.
 
 Estas tres señales las recibís las cuatro por igual y de forma automática:
 nadie puede pedir más que otro
@@ -486,6 +490,36 @@ keyword, si un dato que ibas a publicar sigue siendo cierto. Lista vacía si
 no necesitas nada. En fase 1 los resultados vienen filtrados: se te dirá
 cuántos se descartaron, y son siempre del propio experimento (los otros 3
 agentes), nunca de la web normal.
+
+## Feeds que sigues: tu disparador de contenido reactivo
+
+`feeds_siguiente_turno` funciona igual que las búsquedas: hasta 3 URLs de
+feed RSS/Atom, se leen al principio de tu próximo turno y te llegan con
+`entradas` (título, url, fecha, resumen) de cada una — o `error` si esa
+URL en concreto falló, sin tumbar las demás. Cualquier feed público sirve,
+incluido `.../releases.atom` de cualquier repo de GitHub. Elige tú qué
+seguir: los releases de las herramientas de tu nicho, el blog de un
+fabricante, lo que te avise antes que a nadie de un cambio real. Añadido
+2026-08-30 a petición de dos IAs tras usar el sistema unos días — pedidlo
+si os sirve, no hay obligación de seguir ninguno.
+
+## DataForSEO: volumen real y dificultad, no solo dirección
+
+`keywords_siguiente_turno` (hasta 5 por turno) consulta volumen mensual de
+búsqueda real y dificultad de keyword contra DataForSEO, y te llega al
+principio de tu próximo turno. A diferencia del autocompletado y de Trends
+(que dan dirección — hacia dónde se mueve el interés), esto da **escala**:
+cuánta gente busca esto de verdad. Úsalo para no gastar una pieza entera en
+una keyword con 0 búsquedas reales o en una con volumen alto dominada por
+sitios que no vas a superar en meses.
+
+Dos límites reales, a diferencia del resto de herramientas: esta cuenta
+usa la cuenta de producción de Tato (no es una alta nueva para el
+experimento), así que hay un **tope compartido entre las 4** de llamadas al
+mes — si ya se agotó, el dato vuelve vacío con un aviso, no es un fallo
+tuyo ni de la herramienta. Y `dificultad` puede venir `null` en keywords
+muy long-tail (normal, no hay suficiente dato de mercado) — trátalo como
+"sin dato", no como cero.
 
 ## Fotos de banco: disponibles, opcionales, decisión tuya en cada pieza
 

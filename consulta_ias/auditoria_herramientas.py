@@ -49,7 +49,7 @@ REGLA_SIMETRIA = (
 )
 
 
-def preguntar(ia: str) -> str:
+def preguntar(ia: str, resumen: str) -> str:
     personalidad = (PROMPTS_DIR / f"personalidad_{ia}.md").read_text(encoding="utf-8")
     system = (
         personalidad
@@ -62,7 +62,7 @@ def preguntar(ia: str) -> str:
         f"{REGLA_SIMETRIA}\n\n"
         f"Esto es lo que ha pasado de verdad en tu subdominio hasta ahora "
         f"(para que no pidas algo que ya tienes o no necesitas):\n"
-        f"{_resumen_real(ia)}\n\n"
+        f"{resumen}\n\n"
         "Dos preguntas, con esa experiencia real detrás, no en abstracto:\n\n"
         "1. ¿Qué te ha faltado de verdad en un turno real hasta ahora — un "
         "dato, una integración, una capacidad — que te habría hecho tomar "
@@ -77,28 +77,41 @@ def preguntar(ia: str) -> str:
         "anterior — pedir algo el día 0 sin haberlo probado nunca no es "
         "lo mismo que decidir con datos reales delante."
     )
-    return IAS[ia](system, user)
+    respuesta = IAS[ia](system, user)
+    # Mismo guardia que auditoria_individual.py: `IAS[ia]` puede devolver un
+    # texto placeholder ("[sin X_API_KEY configurada]", "[error de X...]")
+    # en vez de lanzar — sin comprobarlo, ese placeholder se guardaba como
+    # si fuera una respuesta real.
+    if respuesta.startswith(("[sin ", "[error")):
+        raise RuntimeError(f"{ia}: {respuesta}")
+    return respuesta
 
 
-async def _preguntar_a_las_4() -> dict[str, str]:
-    tareas = {ia: asyncio.to_thread(preguntar, ia) for ia in ORDEN}
-    resultados = await asyncio.gather(*tareas.values())
+async def _preguntar_a_las_4(resumenes: dict[str, str]) -> dict[str, str | Exception]:
+    tareas = {ia: asyncio.to_thread(preguntar, ia, resumenes[ia]) for ia in ORDEN}
+    # return_exceptions=True: mismo motivo que en auditoria_individual.py —
+    # un fallo de una IA no debe tirar las otras 3 respuestas ya pagadas.
+    resultados = await asyncio.gather(*tareas.values(), return_exceptions=True)
     return dict(zip(tareas.keys(), resultados))
 
 
 def main():
-    fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M")
+    resumenes = {ia: _resumen_real(ia) for ia in ORDEN}
     print("=== preguntando a las 4 en paralelo qué herramientas les faltan ===", file=sys.stderr)
-    respuestas = asyncio.run(_preguntar_a_las_4())
+    respuestas = asyncio.run(_preguntar_a_las_4(resumenes))
 
     bloques = []
     for ia in ORDEN:
         respuesta = respuestas[ia]
+        if isinstance(respuesta, Exception):
+            print(f"[{ia}] FALLÓ, sin respuesta real: {respuesta}", file=sys.stderr)
+            respuesta = f"[fallida, no hubo respuesta real: {respuesta}]"
         destino = AUDITORIAS_DIR / f"{fecha}-herramientas-{ia}.md"
         destino.write_text(
             f"# Qué herramientas les faltan — {ia} — {fecha}\n\n"
             "Conversación privada (no consejo de sabios), informada por uso "
-            f"real.\n\n## Datos reales que se le dieron\n\n{_resumen_real(ia)}\n\n"
+            f"real.\n\n## Datos reales que se le dieron\n\n{resumenes[ia]}\n\n"
             f"## Respuesta de {ia}\n\n{respuesta}\n",
             encoding="utf-8",
         )

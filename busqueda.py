@@ -73,19 +73,40 @@ def _es_del_experimento(url: str, bloqueados: set[str]) -> bool:
     return any(host == b or host.endswith("." + b) for b in bloqueados)
 
 
-def _buscar_brave(consulta: str, n: int) -> list[dict]:
+def _buscar_brave(consulta: str, n: int, frescura: str | None = None) -> list[dict]:
+    """`frescura`: 'pd' (día), 'pw' (semana), 'pm' (mes), 'py' (año) — el
+    parámetro `freshness` de Brave, o None para no filtrar por fecha.
+
+    Pedido real de Claude en la auditoría de herramientas del 2026-08-30:
+    sin saber si el top-3 de una SERP es de hace tres años o de hace nueve
+    días, la decisión de "¿entro en este tema o está ya cubierto?" se toma
+    a ciegas. Brave ya devuelve la edad de cada resultado (`age`) sin coste
+    extra — solo había que exponerla, no es una fuente nueva que contratar.
+    """
     clave = os.environ.get("BRAVE_SEARCH_API_KEY")
     if not clave:
         raise RuntimeError("sin BRAVE_SEARCH_API_KEY configurada")
+    params = {"q": consulta, "count": n, "country": "es", "search_lang": "es"}
+    if frescura in {"pd", "pw", "pm", "py"}:
+        params["freshness"] = frescura
     resp = httpx.get(
         "https://api.search.brave.com/res/v1/web/search",
-        params={"q": consulta, "count": n, "country": "es", "search_lang": "es"},
+        params=params,
         headers={"X-Subscription-Token": clave, "Accept": "application/json"},
         timeout=TIMEOUT,
     )
     resp.raise_for_status()
     return [
-        {"titulo": r.get("title", ""), "url": r.get("url", ""), "extracto": r.get("description", "")}
+        {
+            "titulo": r.get("title", ""),
+            "url": r.get("url", ""),
+            "extracto": r.get("description", ""),
+            # Texto libre que da Brave ("hace 3 días", una fecha ISO, o
+            # ausente si no lo sabe) — no siempre viene, se pasa tal cual
+            # en vez de intentar normalizarlo a un formato que no siempre
+            # es fiable.
+            "edad": r.get("age") or r.get("page_age"),
+        }
         for r in resp.json().get("web", {}).get("results", [])
     ]
 
@@ -93,13 +114,19 @@ def _buscar_brave(consulta: str, n: int) -> list[dict]:
 PROVEEDORES = {"brave": _buscar_brave}
 
 
-def buscar(consulta: str, fase: int = 1, n: int = 8, cfg: dict | None = None) -> dict:
+def buscar(consulta: str, fase: int = 1, n: int = 8, cfg: dict | None = None,
+           frescura: str | None = None) -> dict:
     """Devuelve {'resultados': [...], 'descartados': N, 'fase': N}.
 
     `descartados` se informa a propósito: el agente debe saber que hubo
     resultados filtrados aunque no vea cuáles, en vez de creer que la web
     entera no habla del tema. Ocultarle que existe un filtro sería mentirle
     sobre su propio contexto.
+
+    `frescura`: 'pd'/'pw'/'pm'/'py' para filtrar por fecha (ver
+    `_buscar_brave`), o None para no filtrar — el campo `edad` de cada
+    resultado ya viaja siempre, filtrar o no es decisión del agente turno
+    a turno, no algo que haya que activar aparte.
     """
     if cfg is None:
         with open(CONFIG_PATH, encoding="utf-8") as fh:
@@ -113,7 +140,7 @@ def buscar(consulta: str, fase: int = 1, n: int = 8, cfg: dict | None = None) ->
 
     try:
         # Se piden de más porque el filtro va a tirar algunos.
-        brutos = fn(consulta, n + 5 if fase == 1 else n)
+        brutos = fn(consulta, n + 5 if fase == 1 else n, frescura)
     except Exception as e:
         print(f"búsqueda no disponible: {e}", file=sys.stderr)
         return {"resultados": [], "descartados": 0, "fase": fase, "error": str(e)}

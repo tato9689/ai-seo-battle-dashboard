@@ -29,6 +29,10 @@ Cada evento:
   "modelo_siguiente": "barato",
   "consultas_siguiente_turno": ["volumen de busqueda wearables espana"],
   "busquedas_recibidas": ["que consultas se le ejecutaron en este turno"],
+  "feeds_siguiente_turno": ["https://github.com/.../releases.atom"],
+  "feeds_recibidos": ["que feeds se leyeron en este turno"],
+  "keywords_siguiente_turno": ["warping petg bambu a1"],
+  "keywords_recibidas": ["que keywords se consultaron en DataForSEO"],
   "tier_usado": "diaria",
   "envio": {"enviado": true, "campana_id": 12, "asunto": "...", "suscriptores": 34},
   "avisos": ["todo el sitio sigue sirviendo solo reset.css: nunca has vestido..."],
@@ -58,6 +62,15 @@ false` con el motivo — sin suscriptores confirmados, bloqueado por
 guardarraíles o error de Listmonk). Va en el log público porque los
 suscriptores son el KPI que decide el experimento, y hasta hoy no había forma
 de saber desde fuera si un envío había salido.
+
+`feeds_siguiente_turno`/`feeds_recibidos` y `keywords_siguiente_turno`/
+`keywords_recibidas` (añadidos 2026-08-30, tras la auditoría de
+herramientas) siguen el mismo patrón que `consultas_siguiente_turno`/
+`busquedas_recibidas`: se piden en un turno, se ejecutan y llegan al
+principio del siguiente. Feeds acepta hasta 3 URLs RSS/Atom (incluido
+`.../releases.atom` de GitHub); keywords hasta 5, consultadas contra
+DataForSEO con un tope compartido de llamadas entre las 4 (ver
+`dataforseo.py`).
 
 `avisos` (añadido 2026-08-30) son los avisos NO bloqueantes que devolvió
 `guardarrailes.validar()` en este turno (null si no hubo ninguno) — a
