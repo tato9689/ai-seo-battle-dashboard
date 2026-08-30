@@ -22,6 +22,7 @@ El gasto sale de `coste_estimado` de `activity_log`, que es una estimación
 con la tabla de precios de cron_agente. Sirve para decidir, no para
 facturar: la cifra que manda siempre es la de la consola del proveedor.
 """
+import calendar
 import json
 import sqlite3
 import sys
@@ -113,8 +114,10 @@ def contexto_para_agente(ia: str, modelos: dict, precios: dict, cfg: dict | None
     opción — sin eso estaría eligiendo a ciegas.
     """
     e = estado(ia, cfg)
-    dias_mes = 30
-    dia = min(date.today().day, dias_mes)
+    hoy = date.today()
+    dias_mes = calendar.monthrange(hoy.year, hoy.month)[1]
+    dia = min(hoy.day, dias_mes)
+    dias_hasta_reinicio = dias_mes - hoy.day
     # Ritmo: cuánto llevaría gastado si el gasto fuera parejo todo el mes.
     esperado = e["tope"] * dia / dias_mes
     return {
@@ -122,6 +125,7 @@ def contexto_para_agente(ia: str, modelos: dict, precios: dict, cfg: dict | None
         "tope_mensual_eur": e["tope"],
         "queda_eur": round(max(e["tope"] - e["gastado"], 0), 3),
         "vas_por_delante_del_ritmo": bool(e["gastado"] > esperado),
+        "dias_hasta_reinicio_del_tope": dias_hasta_reinicio,
         "modelos_disponibles": {
             "barato": {
                 "modelo": modelos.get("diaria"),
@@ -134,7 +138,11 @@ def contexto_para_agente(ia: str, modelos: dict, precios: dict, cfg: dict | None
         },
         "nota": ("Eliges tú con cuál trabajar en tu PRÓXIMO turno, con el campo "
                  "modelo_siguiente. Si agotas el tope, no se te llama en lo que "
-                 "queda de mes y pierdes turnos."),
+                 "queda de mes y pierdes turnos. El tope es mensual y NO se "
+                 "acumula: lo que no gastes en 'queda_eur' antes de "
+                 "dias_hasta_reinicio_del_tope no pasa al mes siguiente, se "
+                 "pierde sin más. Si quedan pocos días, ahorrar ya no tiene "
+                 "premio — gasta acorde a lo que de verdad mejore tu turno."),
     }
 
 
