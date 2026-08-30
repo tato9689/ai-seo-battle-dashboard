@@ -117,12 +117,29 @@ def contenido_actual_archivos(repo_dir: Path) -> str:
 
 def extraer_bloque_json(texto: str) -> dict | None:
     m = re.search(r"```json\s*(\{.*?\})\s*```", texto, re.DOTALL)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(1))
-    except json.JSONDecodeError:
-        return None
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Red de seguridad: si el modelo se salta el cercado ```json``` pero el
+    # JSON en sí es válido (pasó de verdad con gpt el 2026-08-30 — dos
+    # párrafos de razonamiento y el bloque sin cercar detrás), tirar el turno
+    # entero por un detalle cosmético desperdicia contenido bueno y gasto
+    # real. El contrato exige que sea el bloque FINAL, así que solo cuenta el
+    # que consume el texto hasta el final (evita colarse con un '{' suelto
+    # de en medio del razonamiento).
+    decoder = json.JSONDecoder()
+    pos = texto.find("{")
+    while pos != -1:
+        try:
+            obj, fin = decoder.raw_decode(texto, pos)
+            if isinstance(obj, dict) and not texto[fin:].strip():
+                return obj
+        except json.JSONDecodeError:
+            pass
+        pos = texto.find("{", pos + 1)
+    return None
 
 
 def razonamiento_sin_json(texto: str) -> str:
@@ -593,6 +610,28 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     if datos is None:
         print(f"[{ia}] no se pudo parsear el bloque JSON de la respuesta — no se aplica nada.", file=sys.stderr)
         print(texto)
+        # Se registra igual que un bloqueo de guardarraíles: antes esto
+        # devolvía sin dejar rastro, así que el turno desaparecía del log
+        # público sin explicación y el siguiente turno no se enteraba de por
+        # qué no se publicó nada — rompía la transparencia del experimento.
+        registrar_evento(repo_dir, {
+            "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "modelo_exacto": resultado["modelo"],
+            "tipo_tarea": None,
+            "input_contexto": ctx,
+            "razonamiento": texto[:4000],
+            "accion_tipo": None,
+            "output_resumen": "el turno no se publicó: la respuesta no traía un bloque JSON válido",
+            "output_url": None,
+            "tokens_in": resultado["tokens_in"],
+            "tokens_out": resultado["tokens_out"],
+            "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
+            "duracion_seg": resultado["duracion_seg"],
+            "resultado": "error",
+            "detalle_error": "no se pudo parsear el bloque JSON de la respuesta",
+        })
+        git_commit(repo_dir, "log: registra intento sin JSON parseable")
         return
 
     razonamiento = razonamiento_sin_json(texto)
