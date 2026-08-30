@@ -478,16 +478,6 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             f"(`descartados` son resultados del propio experimento que el filtro de fase te ocultó):\n"
             f"{json.dumps(resultados_busqueda, ensure_ascii=False)}\n\n"
         )
-    user = (
-        f"Tu sitio vive en {base_url} y ese es el dominio que va en tus canonical, "
-        f"tus og:url y tus enlaces absolutos. Nunca escribas un marcador tipo "
-        f"[SUBDOMINIO] ni inventes otro dominio: el filtro descarta el turno entero.\n\n"
-        f"{aviso_bloqueo}"
-        f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
-        f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
-        f"{bloque_busqueda}"
-        f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
-    )
 
     # Freno de gasto ANTES de llamar. El límite de la consola del proveedor es
     # la red final, pero salta de golpe y deja al agente mudo sin explicación;
@@ -517,6 +507,31 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # una newsletter con el modelo pequeño es mejor que quedarse sin turnos.
         print(f"[{ia}] {presu['motivo']}")
         tier = "diaria"
+
+    # Se calcula el tier ANTES de construir el prompt para poder decírselo tal
+    # cual: modelo_siguiente solo decide el PRÓXIMO turno, así que sin esta
+    # línea el agente escribe sin saber con qué modelo está escribiendo ahora
+    # mismo — pasó de verdad el 2026-08-30, un turno razonó "voy a usar el
+    # modelo potente" y en realidad corrió con el barato, sin que nada se lo
+    # dijera.
+    aviso_tier = (
+        f"Este turno de HOY ya se está ejecutando con el modelo "
+        f"'{MODELOS.get(ia, {}).get(tier)}' (tier '{tier}'). Eso no lo eliges "
+        f"ahora: quedó fijado por tu elección de modelo_siguiente en el turno "
+        f"anterior (o por defecto, si es tu primer turno). Lo que pongas en "
+        f"modelo_siguiente esta vez decide tu PRÓXIMO turno, no este.\n\n"
+    )
+    user = (
+        f"Tu sitio vive en {base_url} y ese es el dominio que va en tus canonical, "
+        f"tus og:url y tus enlaces absolutos. Nunca escribas un marcador tipo "
+        f"[SUBDOMINIO] ni inventes otro dominio: el filtro descarta el turno entero.\n\n"
+        f"{aviso_bloqueo}"
+        f"{aviso_tier}"
+        f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
+        f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
+        f"{bloque_busqueda}"
+        f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
+    )
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
     texto = resultado["texto"]
     avisar_si_cambia_modelo(ia, tier, resultado.get("modelo"))
