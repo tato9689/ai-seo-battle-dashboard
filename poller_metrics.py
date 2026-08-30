@@ -11,6 +11,7 @@ de forma independiente y aislada: si Listmonk aún no existe o una property
 GA4 no está creada, esa fuente queda a None pero las demás se guardan igual.
 """
 import json
+import os
 import sys
 from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
@@ -123,6 +124,10 @@ def registrar_indexacion(conn, ia: str, creds, site_url: str):
 
 
 def datos_listmonk(base_url: str, token: str, list_id) -> dict:
+    # "env:NOMBRE" saca el valor del entorno: el token no puede vivir en
+    # config.json, que está versionado en git.
+    if isinstance(token, str) and token.startswith("env:"):
+        token = os.environ.get(token[4:], "PENDIENTE")
     if not list_id or "PENDIENTE" in base_url or "PENDIENTE" in token:
         raise RuntimeError("Listmonk aún no configurado")
     resp = httpx.get(

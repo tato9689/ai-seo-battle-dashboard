@@ -103,6 +103,29 @@ def _paginas_html(repo_dir: Path, archivos_nuevos: dict[str, str]) -> dict[str, 
     return paginas
 
 
+# Ficheros que genera el sistema DESPUÉS de que el agente escriba, en el mismo
+# turno: pedirle que además los mantenga a mano costaría tokens y un feed mal
+# formado no se detecta hasta que Search Console se queja semanas después. El
+# agente enlaza a ellos con razón, así que no son enlaces rotos.
+GENERADOS_POR_EL_SISTEMA = {"rss.xml", "sitemap.xml"}
+
+
+def _resuelve(repo_dir: Path, destino: str, archivos_nuevos: dict[str, str]) -> bool:
+    """¿Existe este destino, resolviendo como resuelve Caddy en producción?
+
+    El esqueleto enlaza a /privacidad y /log sin extensión, y Caddy los sirve
+    con `try_files {path} {path}.html {path}/index.html`. Comprobar solo la
+    ruta literal marcaba como rotos justo los enlaces que el propio esqueleto
+    obliga a poner — habría bloqueado el primer turno de las cuatro.
+    """
+    if destino in GENERADOS_POR_EL_SISTEMA:
+        return True
+    for candidato in (destino, f"{destino}.html", f"{destino}/index.html"):
+        if candidato in archivos_nuevos or (repo_dir / candidato).exists():
+            return True
+    return False
+
+
 def _enlaces_rotos(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
     """Solo enlaces internos (relativos) — uno externo caído depende de un
     tercero, no es un fallo del agente y no debe bloquear su commit."""
@@ -114,11 +137,18 @@ def _enlaces_rotos(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]
             destino_rel = url.split("#")[0].split("?")[0]
             if not destino_rel:
                 continue
-            destino = os.path.normpath((Path(ruta).parent / destino_rel).as_posix())
-            if destino in archivos_nuevos or (repo_dir / destino).exists():
+            if destino_rel.startswith("/"):
+                # Raíz-relativo: cuelga de la raíz del repo, no del directorio
+                # de la página. Sin este caso, `repo_dir / "/log"` devolvía
+                # "/log" —pathlib descarta la izquierda ante una ruta
+                # absoluta— y se comprobaba la raíz del servidor.
+                destino = os.path.normpath(destino_rel.lstrip("/"))
+            else:
+                destino = os.path.normpath((Path(ruta).parent / destino_rel).as_posix())
+            if _resuelve(repo_dir, destino, archivos_nuevos):
                 continue
             errores.append(f"enlace interno roto en {ruta}: {url!r} no existe")
-    return errores
+    return sorted(set(errores))
 
 
 def _duplicacion(paginas: dict[str, str]) -> list[str]:
@@ -269,12 +299,56 @@ def _limite_cambios_diarios(repo_dir: Path, maximo: int = 1) -> list[str]:
     return []
 
 
+# Marcadores de plantilla que nunca deben llegar a producción. Salió de un
+# dry-run real (2026-08-30): con el dominio todavía sin comprar, el agente
+# escribió `https://[SUBDOMINIO]/` dentro de sus <link rel="canonical">, sus
+# og:url y su RSS. Un canonical con un marcador dentro no es un fallo
+# cosmético — le dice a Google que la URL buena es otra que no existe, y eso
+# no se ve hasta semanas después en Search Console.
+MARCADORES_PLANTILLA = ("[SUBDOMINIO]", "PENDIENTE-DOMINIO", "PENDIENTE-TOKEN", "[PENDIENTE")
+
+
+def _marcadores(archivos_nuevos: dict[str, str]) -> list[str]:
+    bloqueantes = []
+    for ruta, contenido in sorted(archivos_nuevos.items()):
+        encontrados = sorted({m for m in MARCADORES_PLANTILLA if m in contenido})
+        if encontrados:
+            bloqueantes.append(f"{ruta}: marcador de plantilla sin sustituir ({', '.join(encontrados)})")
+    return bloqueantes
+
+
+def _pie_obligatorio(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
+    """El descargo de no-afiliación y el enlace al marcador.
+
+    El descargo es bloqueante y el enlace solo un aviso, y la diferencia es
+    deliberada: alojar contenido en `gpt.` o `gemini.` sin decir que no eres
+    esa empresa es el único riesgo del proyecto que no se arregla pidiendo
+    perdón después. Que falte el enlace al marcador cuesta visitas; que falte
+    el descargo puede costar el dominio.
+    """
+    bloqueantes, avisos = [], []
+    for ruta, contenido in sorted(archivos_nuevos.items()):
+        if not ruta.endswith(".html"):
+            continue
+        if "sin afiliación" not in contenido.lower():
+            bloqueantes.append(f"{ruta}: falta el descargo de no-afiliación en el pie")
+        if "retoseo.com" not in contenido:
+            avisos.append(f"{ruta}: no enlaza al marcador en vivo")
+    return bloqueantes, avisos
+
+
 def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     """archivos_nuevos: {ruta_relativa_posix: contenido_completo} — solo los
     ficheros que cambian este turno, ya con ruta_segura() verificada por el
     llamador. Devuelve (bloqueantes, avisos)."""
     bloqueantes: list[str] = []
     avisos: list[str] = []
+
+    bloqueantes += _marcadores(archivos_nuevos)
+
+    b, a = _pie_obligatorio(archivos_nuevos)
+    bloqueantes += b
+    avisos += a
 
     bloqueantes += _enlaces_rotos(repo_dir, archivos_nuevos)
 
@@ -297,3 +371,18 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     bloqueantes += _limite_cambios_diarios(repo_dir)
 
     return bloqueantes, avisos
+
+
+def validar_newsletter(cuerpo_html: str) -> tuple[list[str], list[str]]:
+    """Guardarraíles del correo que sale a los suscriptores.
+
+    Pasa por los checks de CONTENIDO (promesas de salud o dinero, incentivos
+    por suscripción, tono de spam, marcadores de plantilla sin sustituir),
+    que son exactamente los mismos riesgos que en una página. No pasa por los
+    de página web: un correo no lleva canonical, ni og:, ni el pie del sitio,
+    y exigírselo bloquearía todos los envíos por fallos que no existen.
+    """
+    como_pagina = {"newsletter.html": cuerpo_html}
+    bloqueantes = _marcadores(como_pagina)
+    b, avisos = _contenido(como_pagina)
+    return bloqueantes + b, avisos

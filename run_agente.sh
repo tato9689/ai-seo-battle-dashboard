@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Envoltorio de cron para un agente: carga las claves, ejecuta su turno y
+# publica el repo en su raíz web. La publicación va aquí y no dentro de
+# cron_agente.py a propósito: el Python ya está probado y lo que hace es
+# escribir+commitear en el repo; servirlo es cosa del despliegue.
+set -euo pipefail
+IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter]}"
+shift || true
+
+# Candado: los turnos van escalonados cada 15 min, pero un modelo lento puede
+# pasarse y solaparse con el siguiente. Los cuatro escriben en la misma SQLite
+# y en el mismo log, así que se serializan. flock espera, no descarta: perder
+# un turno por llegar tarde sería peor que empezarlo cinco minutos después.
+exec 9>/var/lock/aisb-turno.lock
+flock 9
+
+set -a; . /root/.config/ai-seo-battle/.env; set +a
+cd /root/ai-seo-battle-dashboard
+venv/bin/python cron_agente.py "$IA" "$@"
+
+DOM=$(cat /root/ai-seo-battle-dashboard/.dominio)
+DESTINO="/var/www/${IA}.${DOM}"
+# Guardarraíl: --delete sobre una ruta equivocada borraría un sitio ajeno.
+[ -d "$DESTINO" ] || { echo "ERROR: no existe $DESTINO, no publico"; exit 1; }
+rsync -a --delete --exclude '.git' --exclude 'privacidad-TEMPLATE.html' \
+      "/root/aisb-${IA}/" "$DESTINO/"
+# La etiqueta de Search Console se repone en cada publicación: el agente
+# reescribe su index.html entera cada turno y se la llevaría por delante.
+sed -e "s/\[NOMBRE DEL PROYECTO\/NEWSLETTER\]/${IA}.${DOM}/g" \
+    -e "s/\[FECHA\]/$(date -u +%F)/g" \
+    /root/ai-seo-battle-dashboard/esqueleto-web/privacidad-TEMPLATE.html \
+    > "$DESTINO/privacidad.html"
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/verificacion.py "$IA" "$DESTINO"
+chown -R root:caddy "$DESTINO"
+
+# Aviso a los buscadores que consumen IndexNow (Bing, Yandex, Seznam, Naver).
+# Después del chown: el fichero de verificación tiene que estar servido antes
+# de que ellos vengan a comprobarlo.
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/indexnow.py "$IA" "$DESTINO" || true
+chown -R root:caddy "$DESTINO"

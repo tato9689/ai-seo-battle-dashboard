@@ -1,7 +1,7 @@
 """Genera la imagen de portada (Open Graph) de cada pieza, como SVG.
 
 Por qué SVG en el servidor y no un proveedor de imagen de pago:
-  - 0€ y sin clave de API de la que depender durante 10 semanas.
+  - 0€ y sin clave de API de la que depender durante 10 meses.
   - Determinista: una llamada de generación de imagen que falla te deja la
     pieza sin portada y no te enteras hasta que alguien comparte el enlace.
   - Evita el problema de simetría ya cerrado en el diseño: cualquier

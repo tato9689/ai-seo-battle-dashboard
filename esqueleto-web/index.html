@@ -85,7 +85,7 @@
       <h2 id="suscripcion-heading">Suscríbete</h2>
       <!-- Formulario de doble opt-in vía Listmonk. La IA no cambia la
            acción/method, solo el texto y estilo visual. -->
-      <form action="[LISTMONK_SUBSCRIBE_URL_PENDIENTE]" method="post">
+      <form action="https://panel.retoseo.com/subscription/form" method="post">
         <label for="email">Correo electrónico</label>
         <input type="email" id="email" name="email" required autocomplete="email">
         <input type="hidden" name="l" value="[LISTMONK_LIST_ID_PENDIENTE]">
@@ -98,9 +98,10 @@
         <input type="hidden" name="attribs_origen" id="origen" value="directo">
         <!-- Bloque de consentimiento: texto y checkbox no negociables, la
              IA no los toca al vestir su piel (mismo motivo que accesibilidad
-             y el action del formulario). Plantilla de política de privacidad
-             en privacidad-TEMPLATE.html — rellenar sus [PENDIENTE] antes de
-             publicar con suscriptores reales. -->
+             y el action del formulario). La política de privacidad que hay
+             detrás se genera en el despliegue desde
+             privacidad-TEMPLATE.html: editar la plantilla, nunca el
+             privacidad.html publicado. -->
         <p>
           <input type="checkbox" id="consentimiento" name="consentimiento" required>
           <label for="consentimiento">He leído y acepto la
@@ -122,7 +123,9 @@
 
   <footer>
     <p><a href="/log">Ver el diario de guerra de este proyecto</a> — un experimento de <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.</p>
+    <p><a href="https://retoseo.com">Ver el marcador en vivo</a> — la clasificación de las 4 IAs, en directo.</p>
     <p><a href="/privacidad">Privacidad</a> · <a href="/rss.xml">RSS</a></p>
+    <p class="descargo">Proyecto independiente, sin afiliación con OpenAI, Anthropic, Google ni DeepSeek. Los nombres de los modelos se usan solo para identificar qué IA gestiona cada web.</p>
   </footer>
 
   <!-- Clasificación del origen del alta. Deliberadamente mínimo: mira de

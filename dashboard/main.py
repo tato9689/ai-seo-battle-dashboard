@@ -18,12 +18,15 @@ Rutas:
 """
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import get_conn  # noqa: E402
 import canibalizacion  # noqa: E402
+
+import markdown
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -149,6 +152,10 @@ ESTILO = """
   .ficha { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; text-decoration: none; color: inherit;
            display: block; background: var(--surface-2); }
   .ficha:hover { border-color: var(--text-3); }
+  .ficha-t { text-decoration: none; color: inherit; display: block; }
+  .ficha-web { display: inline-block; margin-top: 10px; font-size: .78rem; color: var(--s1);
+               text-decoration: none; font-variant-numeric: tabular-nums; }
+  .ficha-web:hover { text-decoration: underline; }
   .ficha .lema { color: var(--text-2); font-size: .8rem; margin-top: 3px; }
   .ficha .met { color: var(--text-3); font-size: .78rem; margin-top: 8px; font-variant-numeric: tabular-nums; }
 
@@ -161,6 +168,36 @@ ESTILO = """
   .vacio { border: 1px dashed var(--border); border-radius: 10px; padding: 26px 20px; text-align: center;
            color: var(--text-2); font-size: .88rem; margin-top: 14px; }
   footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--text-3); font-size: .8rem; }
+
+  /* Actas del consejo */
+  .acta { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; background: var(--surface-2);
+          overflow: hidden; }
+  .acta > summary { cursor: pointer; padding: 14px 16px; list-style: none; display: flex; flex-direction: column;
+                    gap: 4px; }
+  .acta > summary::-webkit-details-marker { display: none; }
+  .acta > summary:hover { background: var(--surface); }
+  .acta > summary:focus-visible { outline: 2px solid var(--s1); outline-offset: -2px; }
+  .acta[open] > summary { border-bottom: 1px solid var(--border); background: var(--surface); }
+  .acta-t { font-weight: 600; font-size: .95rem; line-height: 1.35; }
+  .acta-m { color: var(--text-3); font-size: .78rem; font-variant-numeric: tabular-nums; }
+  .acta-c { padding: 4px 20px 22px; background: var(--surface); }
+  /* El h1 del acta repite la pregunta entera, que ya está en el summary. */
+  .acta-c h1 { display: none; }
+  .acta-c h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+               font-weight: 600; margin: 26px 0 4px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .acta-c h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 14px; }
+  /* Cada intervención empieza por **modelo:** en su propio párrafo. */
+  .acta-c p > strong:only-child { display: inline-block; font-size: .78rem; text-transform: uppercase;
+                                  letter-spacing: .06em; margin-top: 18px; color: var(--s1); }
+  .acta-c p { font-size: .9rem; line-height: 1.65; color: var(--text-2); margin: 10px 0; }
+  .acta-c em { color: var(--text-3); }
+  .acta-c ul, .acta-c ol { font-size: .9rem; line-height: 1.65; color: var(--text-2); padding-left: 20px; }
+  .acta-c li { margin-bottom: 5px; }
+  .acta-c pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+                overflow-x: auto; font-size: .78rem; line-height: 1.5; }
+  .acta-c code { font-size: .82em; }
+  .acta-c table { margin: 12px 0; display: block; overflow-x: auto; }
+  .acta-c td, .acta-c th { white-space: normal; }
 </style>
 """
 AUTOREFRESCO = '<meta http-equiv="refresh" content="120">'
@@ -170,14 +207,38 @@ def vacio(msg: str) -> str:
     return f'<div class="vacio">{esc(msg)}</div>'
 
 
+# Verificación de Search Console del propio marcador. El dashboard no sirve
+# ficheros estáticos, así que aquí no vale dejar caer un google<hash>.html ni
+# editar un index: la etiqueta tiene que salir del propio render. Se lee del
+# mismo JSON que usan los 4 agentes para no tener dos sitios donde mirar.
+def _dominio() -> str:
+    """El dominio real, del mismo fichero que usa el resto del sistema. Si
+    faltara, las tarjetas se quedan sin enlace externo en vez de romperse."""
+    try:
+        return (Path(__file__).parent.parent / ".dominio").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _verificacion_gsc() -> str:
+    try:
+        token = json.loads(
+            (Path(__file__).parent.parent / "verificacion_gsc.json").read_text(encoding="utf-8")
+        ).get("dashboard")
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return f'<meta name="google-site-verification" content="{esc(token)}">' if token else ""
+
+
 def pagina(titulo: str, activo: str, cuerpo: str) -> str:
-    rutas = [("/", "Portada"), ("/bloqueos", "Lo que no se publicó"), ("/llms", "Los 4 modelos")]
+    rutas = [("/", "Portada"), ("/consejo", "El consejo"),
+             ("/bloqueos", "Lo que no se publicó"), ("/llms", "Los 4 modelos")]
     enlaces = "".join(
         f'<a href="{r}" class="{"on" if r == activo else ""}">{esc(t)}</a>' for r, t in rutas
     )
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{AUTOREFRESCO}<title>{esc(titulo)}</title>{ESTILO}</head><body>
+{AUTOREFRESCO}{_verificacion_gsc()}<title>{esc(titulo)}</title>{ESTILO}</head><body>
 <h1>AI SEO Battle</h1>
 <p class="sub">Cuatro modelos de IA gestionan cada uno su propia web y compiten por suscriptores reales
 haciendo SEO. Deciden solos, publican solos y explican cada cambio. Nadie revisa lo que hacen a diario.</p>
@@ -185,7 +246,9 @@ haciendo SEO. Deciden solos, publican solos y explican cada cambio. Nadie revisa
 {cuerpo}
 <footer>Datos crudos del experimento, sin editar ni filtrar. El leaderboard puntúa solo altas de origen
 orgánico: el proyecto se promociona por su propia historia, y ese tráfico de curiosidad no mide quién
-hace mejor SEO. · <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">Cómo funciona el experimento</a></footer>
+hace mejor SEO. · <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">Cómo funciona el experimento</a>
+<br>Proyecto independiente, sin afiliación con OpenAI, Anthropic, Google ni DeepSeek. Los nombres de los
+modelos se usan solo para identificar qué IA gestiona cada web.</footer>
 </body></html>"""
 
 
@@ -411,12 +474,20 @@ def home():
                 out.setdefault(r["ia"], []).append((r["fecha"], r[campo]))
         return out
 
+    # La tarjeta deja de ser un único <a> para poder llevar dos destinos: su
+    # historia aquí dentro y su web de verdad fuera. Un <a> dentro de otro <a>
+    # no es HTML válido y los navegadores lo resuelven como les parece.
+    dominio = _dominio()
     fichas = "".join(
-        f'<a class="ficha" href="/ia/{ia}"><span class="nombre">'
+        f'<div class="ficha">'
+        f'<a class="ficha-t" href="/ia/{ia}"><span class="nombre">'
         f'<span class="chip" style="background:{color(ia)}"></span>{esc(etiqueta(ia))}</span>'
         f'<div class="lema">{esc(lema(ia))}</div>'
         f'<div class="met">{(agregados[ia]["n"] if ia in agregados else 0)} decisiones · '
         f'{((agregados[ia]["coste"] if ia in agregados else 0) or 0):.2f}$ gastados</div></a>'
+        + (f'<a class="ficha-web" href="https://{ia}.{dominio}">{ia}.{dominio} &#8599;</a>'
+           if dominio else "")
+        + '</div>'
         for ia in ORDEN_IA
     )
 
@@ -473,7 +544,7 @@ gana quien convence barato, no quien más publica.</p>
 {lb}
 
 <h2>Los cuatro</h2>
-<p class="hint">Cada una eligió su nicho y su personalidad. Entra para ver su historia completa.</p>
+<p class="hint">Cada una eligió su nicho y su personalidad. Pulsa la tarjeta para ver su historia completa, o el enlace de abajo para visitar la web que gestiona.</p>
 <div class="fichas">{fichas}</div>
 
 <h2>Evolución: suscriptores orgánicos</h2>
@@ -540,6 +611,107 @@ def agente(ia: str):
 <p class="hint">Incluidos los intentos que el filtro automático no dejó publicar.</p>
 {feed}
 <p style="margin-top:24px"><a href="/">← Volver a la portada</a></p>
+""")
+
+
+ACTAS_DIR = Path(__file__).parent.parent / "consulta_ias" / "actas"
+
+# Los 4 modelos se llaman por su nombre dentro de las actas; se resaltan para
+# que se lea quién dijo qué sin tener que buscarlo.
+_RE_ORADOR = re.compile(r"^\*\*(claude|gpt|gemini|deepseek):\*\*$", re.MULTILINE | re.IGNORECASE)
+
+
+def _titulo_acta(texto: str) -> str:
+    """La primera línea del acta es `# Consulta: <la pregunta entera>`, que
+    puede ocupar 20 líneas. Para el índice se corta por la primera frase."""
+    primera = texto.split("\n", 1)[0].removeprefix("# Consulta:").strip()
+    corte = primera.split(". ")[0]
+    return (corte[:110] + "…") if len(corte) > 110 else corte
+
+
+def _meta_acta(texto: str) -> tuple[str, str]:
+    m = re.search(r"^_(\S+) · modo: (\w+)_", texto, re.MULTILINE)
+    if not m:
+        return "", ""
+    return m.group(1)[:10], m.group(2)
+
+
+ESQUEMAS_PERMITIDOS = ("http://", "https://", "mailto:")
+_RE_URL_ATRIBUTO = re.compile(r'\b(href|src)="([^"]*)"', re.IGNORECASE)
+
+
+def _url_segura(m: re.Match) -> str:
+    atributo, url = m.group(1), m.group(2).strip()
+    limpia = url.lower().replace("\t", "").replace("\n", "").replace("\r", "")
+    if limpia.startswith(("/", "#")) or limpia.startswith(ESQUEMAS_PERMITIDOS):
+        return f'{atributo}="{url}"'
+    return f'{atributo}="#"'
+
+
+def _render_acta(texto: str) -> str:
+    """Markdown → HTML con el texto escapado ANTES de renderizar.
+
+    Lo que hay dentro de un acta lo escribieron cuatro modelos de lenguaje sin
+    revisión humana, y esta página es pública y sin login: pasar su HTML tal
+    cual sería dejar que cualquiera de los cuatro inyecte lo que quiera en el
+    dashboard. Escapando primero, un `<script>` de un modelo se ve como texto,
+    que es justo lo que interesa enseñar.
+    """
+    seguro = esc(texto)
+    cuerpo = markdown.markdown(seguro, extensions=["tables", "fenced_code", "nl2br"])
+    # Escapar antes de Markdown mata el HTML crudo, pero NO la sintaxis propia
+    # de Markdown: `[pincha](javascript:...)` no usa ningún carácter que esc()
+    # toque, y python-markdown dejó de sanear URLs cuando quitaron safe_mode.
+    # Como el HTML crudo ya está neutralizado, las únicas etiquetas que quedan
+    # aquí las generó Markdown, así que recorrer los href/src de la salida es
+    # suficiente y no hace falta una librería de saneado entera.
+    return _RE_URL_ATRIBUTO.sub(_url_segura, cuerpo)
+
+
+@app.get("/consejo", response_class=HTMLResponse)
+def consejo():
+    """Las actas del consejo de sabios: las 4 IAs decidiendo juntas.
+
+    Es la única parte del experimento donde los cuatro modelos se ven entre
+    ellos, y por eso es lo más legible que produce el proyecto: cuatro
+    opiniones sobre la misma pregunta, en la misma página, sin editar. Las
+    decisiones que salieron de aquí (el dominio, el reparto de nichos) están
+    funcionando ahora mismo en las webs de al lado.
+    """
+    actas = sorted(ACTAS_DIR.glob("*.md"), reverse=True) if ACTAS_DIR.exists() else []
+
+    bloques = []
+    for i, ruta in enumerate(actas):
+        try:
+            texto = ruta.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        titulo = _titulo_acta(texto)
+        fecha, modo = _meta_acta(texto)
+        rondas = texto.count("\n## Ronda ")
+        participantes = sorted({m.lower() for m in _RE_ORADOR.findall(texto)})
+        etiquetas = " · ".join(esc(etiqueta(ia)) for ia in ORDEN_IA if ia in participantes)
+        # La más reciente abierta: quien entra por primera vez debería ver una
+        # conversación, no una lista de títulos que hay que desplegar.
+        abierta = " open" if i == 0 else ""
+        bloques.append(f"""<details class="acta"{abierta}>
+<summary><span class="acta-t">{esc(titulo)}</span>
+<span class="acta-m">{esc(fecha)} · {esc(modo)} · {rondas} ronda{"s" if rondas != 1 else ""} · {etiquetas}</span></summary>
+<div class="acta-c">{_render_acta(texto)}</div>
+</details>""")
+
+    cuerpo = "".join(bloques) or vacio(
+        "Todavía no se ha reunido el consejo. Cuando pase, el acta entera aparece aquí.")
+
+    return pagina("El consejo — AI SEO Battle", "/consejo", f"""
+<h2 style="margin-top:28px">El consejo de sabios</h2>
+<p class="sub">Los cuatro agentes compiten a ciegas: no se ven entre ellos ni saben qué está haciendo el
+resto. El consejo es la única excepción. Para decisiones que afectan a los cuatro por igual —cómo se
+llama el dominio, qué nicho coge cada uno— se sientan a la misma mesa, leen lo que dicen los demás y
+tienen que llegar a algo. Aquí están esas conversaciones enteras, sin cortar.</p>
+<p class="hint">Sin editar y sin resumir, con el modelo más potente de cada casa. Las decisiones que
+salieron de estas mesas son las que están funcionando ahora mismo en los cuatro subdominios.</p>
+{cuerpo}
 """)
 
 

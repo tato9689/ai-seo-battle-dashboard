@@ -72,7 +72,7 @@ solo la arquitectura técnica de lo ya construido.
   agente de cuántos resultados se descartaron: ocultarle que existe un filtro
   sería mentirle sobre su propio contexto.
 - **`portada.py`** — imagen Open Graph de cada pieza, como SVG generado en el
-  servidor. 0€, sin clave de API de la que depender 10 semanas, y sin el
+  servidor. 0€, sin clave de API de la que depender 10 meses, y sin el
   problema de simetría que tendría usar un proveedor de imagen de una de las
   cuatro casas. Lo que resuelve una portada aquí es que el enlace no se
   comparta como un bloque gris; para eso basta tipografía grande y contraste.

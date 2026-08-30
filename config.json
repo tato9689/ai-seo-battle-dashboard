@@ -1,9 +1,9 @@
 {
   "_nota": "Placeholders hasta comprar el dominio (finde 2026-08-29/30) y montar GA4/GSC/Listmonk por subdominio. Sustituir cada PENDIENTE-* cuando exista.",
-  "checkpoint_fase2": "2026-XX-XX",
+  "checkpoint_fase2": "2027-01-30",
   "google_service_account": "/root/.config/gcp/tato9689-analytics.json",
-  "listmonk_base_url": "https://PENDIENTE-DOMINIO/listmonk-api",
-  "listmonk_api_token": "PENDIENTE-TOKEN",
+  "listmonk_base_url": "http://127.0.0.1:9000/api",
+  "listmonk_api_token": "env:LISTMONK_API_TOKEN",
   "_kill_switch": "Poner \"activo\": false en un agente lo para en seco: cron_agente.py sale sin llamar a su API ni tocar su repo. Es el freno humano del experimento — no hace falta editar el crontab ni parar el servidor.",
   "tope_mensual_eur": 5.0,
   "_tope": "Tope de gasto en €/mes POR AGENTE (una API cada uno). Al 80% se degrada al modelo barato aunque toque newsletter; al 100% no se llama y el turno queda registrado como bloqueado por presupuesto. Se puede afinar por agente con \"tope_mensual_eur\" dentro de su entrada.",
@@ -11,35 +11,37 @@
     {
       "ia": "claude",
       "activo": true,
-      "log_url": "https://claude.PENDIENTE-DOMINIO/log.json",
-      "ga4_property": "properties/PENDIENTE",
-      "gsc_site": "sc-domain:claude.PENDIENTE-DOMINIO",
-      "listmonk_list_id": null
+      "log_url": "https://claude.retoseo.com/log.json",
+      "ga4_property": null,
+      "gsc_site": "https://claude.retoseo.com/",
+      "listmonk_list_id": 3
     },
     {
       "ia": "gpt",
       "activo": true,
-      "log_url": "https://gpt.PENDIENTE-DOMINIO/log.json",
-      "ga4_property": "properties/PENDIENTE",
-      "gsc_site": "sc-domain:gpt.PENDIENTE-DOMINIO",
-      "listmonk_list_id": null
+      "log_url": "https://gpt.retoseo.com/log.json",
+      "ga4_property": null,
+      "gsc_site": "https://gpt.retoseo.com/",
+      "listmonk_list_id": 4
     },
     {
       "ia": "gemini",
       "activo": true,
-      "log_url": "https://gemini.PENDIENTE-DOMINIO/log.json",
-      "ga4_property": "properties/PENDIENTE",
-      "gsc_site": "sc-domain:gemini.PENDIENTE-DOMINIO",
-      "listmonk_list_id": null
+      "log_url": "https://gemini.retoseo.com/log.json",
+      "ga4_property": null,
+      "gsc_site": "https://gemini.retoseo.com/",
+      "listmonk_list_id": 5
     },
     {
       "ia": "deepseek",
       "activo": true,
-      "log_url": "https://deepseek.PENDIENTE-DOMINIO/log.json",
-      "ga4_property": "properties/PENDIENTE",
-      "gsc_site": "sc-domain:deepseek.PENDIENTE-DOMINIO",
-      "listmonk_list_id": null
+      "log_url": "https://deepseek.retoseo.com/log.json",
+      "ga4_property": null,
+      "gsc_site": "https://deepseek.retoseo.com/",
+      "listmonk_list_id": 6
     }
   ],
-  "poll_interval_seg": 900
+  "poll_interval_seg": 900,
+  "_analitica": "Sin GA4 a propósito (decidido 2026-08-30): el esqueleto web es cookieless y meter GA4 obligaría a banner de consentimiento en los 4 subdominios, dejando fuera de la medición a quien rechace. Tráfico = Search Console + logs de acceso de Caddy con la IP enmascarada. poller_metrics.py tolera ga4_property nulo: cada fuente falla por separado.",
+  "_listmonk": "El token vive en /root/.config/ai-seo-battle/.env, no aquí: config.json está versionado en git y un token en el repo es un token público."
 }

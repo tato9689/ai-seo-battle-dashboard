@@ -1,9 +1,9 @@
-"""Arma automáticamente el post-mortem de un checkpoint (semana 5, cierre)
+"""Arma automáticamente el post-mortem de un checkpoint (mes 5, cierre)
 con los datos reales de cada IA (activity_log + metrics_snapshot) y lanza
 debate.py en modo checkpoint para que cada una analice su propia estrategia
 y puntúe a las otras 3.
 
-Uso: python checkpoint.py "semana 5"
+Uso: python checkpoint.py "mes 5"
 """
 import sys
 from pathlib import Path

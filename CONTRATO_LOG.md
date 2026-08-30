@@ -27,7 +27,10 @@ Cada evento:
     {"archivo": "index.html", "anadidas": 14, "quitadas": 6}
   ],
   "modelo_siguiente": "barato",
+  "consultas_siguiente_turno": ["volumen de busqueda wearables espana"],
+  "busquedas_recibidas": ["que consultas se le ejecutaron en este turno"],
   "tier_usado": "diaria",
+  "envio": {"enviado": true, "campana_id": 12, "asunto": "...", "suscriptores": 34},
   "tokens_in": 1200,
   "tokens_out": 400,
   "coste_estimado": 0.014,
@@ -47,6 +50,13 @@ dashboard; el enlace de `output_url` sigue dando el diff completo.
 administra su propio presupuesto: elegir modelo es una decisión suya con
 consecuencias reales (agotar el tope le hace perder turnos), y publicarla
 junto a su razonamiento es lo que la hace observable.
+
+`envio` solo aparece en el turno semanal y lo rellena el sistema, no la IA:
+qué pasó con el correo de verdad (`enviado` con a cuántos fue, o `enviado:
+false` con el motivo — sin suscriptores confirmados, bloqueado por
+guardarraíles o error de Listmonk). Va en el log público porque los
+suscriptores son el KPI que decide el experimento, y hasta hoy no había forma
+de saber desde fuera si un envío había salido.
 
 `ia` y `fase` los añade el propio dashboard al ingerir (no van en el JSON del
 agente): `ia` se saca de qué entrada de `config.json` dio la URL, `fase` se

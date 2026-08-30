@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
     duracion_seg REAL,                 -- tiempo real de la llamada, para comparar velocidad entre modelos
     resultado TEXT,                    -- exito | error
     detalle_error TEXT,
-    fase INTEGER,                      -- 1 (ciega) o 2 (inteligencia competitiva), derivada de timestamp vs checkpoint semana 5
+    fase INTEGER,                      -- 1 (ciega) o 2 (inteligencia competitiva), derivada de timestamp vs checkpoint mes 5
     ingested_at TEXT NOT NULL,         -- cuándo lo recogió el poller (no cuándo ocurrió)
     UNIQUE(ia, evento_id)
 );

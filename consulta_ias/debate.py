@@ -10,7 +10,7 @@
   checkpoint  como paralelo, pero cada IA además puntúa (1-10) las propuestas
             de las otras 3 en un bloque JSON al final de su respuesta, para
             medir consenso real entre modelos. Pensado para post-mortems en
-            los checkpoints del experimento (semana 5, cierre), no para
+            los checkpoints del experimento (mes 5, cierre), no para
             decisiones de producción normales como el dominio.
 
 Uso: python debate.py "pregunta" [rondas] [paralelo|turnos|mixto|checkpoint]

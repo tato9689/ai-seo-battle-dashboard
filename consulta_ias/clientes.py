@@ -12,7 +12,15 @@ import time
 
 import httpx
 
-TIMEOUT = 60
+TIMEOUT = 300
+
+# La API de Anthropic exige max_tokens explícito; OpenAI, Gemini y DeepSeek no
+# lo piden y sirven su máximo por defecto. Estaba en 2048, que da para una
+# respuesta de consejo pero NO para un turno de agente: escribir un index.html
+# entera más un artículo se pasa de ahí, la respuesta llega cortada y el bloque
+# JSON final no parsea. Es un fallo doble — el turno de Claude se pierde, y
+# además Claude compite con un techo de salida que las otras tres no tienen.
+MAX_SALIDA = 16000
 
 # Tres tiers: "diaria" (barato, tarea rutinaria de cron), "semanal"
 # (flagship de coste contenido, para la newsletter semanal de cada agente)
@@ -65,6 +73,22 @@ MODELOS = {
 }
 
 
+def _post(url: str, headers: dict, cuerpo: dict) -> httpx.Response:
+    """POST con reintentos ante 429 y 5xx. Un 503 puntual de un proveedor
+    tiraba el consejo de sabios entero, incluidas las respuestas de las
+    otras 3 ya pagadas (pasó el 2026-08-30 en la ronda 2). Los errores 4xx
+    reales (key mala, modelo inexistente) no se reintentan: no van a
+    arreglarse esperando."""
+    resp = None
+    for intento in range(4):
+        resp = httpx.post(url, headers=headers, json=cuerpo, timeout=TIMEOUT)
+        if resp.status_code != 429 and resp.status_code < 500:
+            return resp
+        if intento < 3:
+            time.sleep(2 ** intento)
+    return resp
+
+
 def _falta_key(nombre_env: str) -> str | None:
     if not os.environ.get(nombre_env):
         return f"[sin {nombre_env} configurada]"
@@ -75,15 +99,14 @@ def _llamar_claude_meta(system: str, user: str, modelo: str) -> dict:
     if err := _falta_key("ANTHROPIC_API_KEY"):
         return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
     t0 = time.monotonic()
-    resp = httpx.post(
+    resp = _post(
         "https://api.anthropic.com/v1/messages",
-        headers={
+        {
             "x-api-key": os.environ["ANTHROPIC_API_KEY"],
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         },
-        json={"model": modelo, "max_tokens": 2048, "system": system, "messages": [{"role": "user", "content": user}]},
-        timeout=TIMEOUT,
+        {"model": modelo, "max_tokens": MAX_SALIDA, "system": system, "messages": [{"role": "user", "content": user}]},
     )
     duracion = time.monotonic() - t0
     resp.raise_for_status()
@@ -114,11 +137,10 @@ def _llamar_openai_compat(url: str, header_key: str, system: str, user: str, mod
     if err := _falta_key(header_key):
         return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
     t0 = time.monotonic()
-    resp = httpx.post(
+    resp = _post(
         url,
-        headers={"Authorization": f"Bearer {os.environ[header_key]}"},
-        json={"model": modelo, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
-        timeout=TIMEOUT,
+        {"Authorization": f"Bearer {os.environ[header_key]}"},
+        {"model": modelo, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
     )
     duracion = time.monotonic() - t0
     resp.raise_for_status()
@@ -143,11 +165,10 @@ def _llamar_gpt_responses_meta(system: str, user: str, modelo: str) -> dict:
     if err := _falta_key("OPENAI_API_KEY"):
         return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
     t0 = time.monotonic()
-    resp = httpx.post(
+    resp = _post(
         "https://api.openai.com/v1/responses",
-        headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
-        json={"model": modelo, "instructions": system, "input": user},
-        timeout=TIMEOUT,
+        {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
+        {"model": modelo, "instructions": system, "input": user},
     )
     duracion = time.monotonic() - t0
     resp.raise_for_status()
@@ -176,14 +197,13 @@ def _llamar_gemini_meta(system: str, user: str, modelo: str) -> dict:
     if err := _falta_key("GOOGLE_API_KEY"):
         return {"texto": err, "tokens_in": None, "tokens_out": None, "duracion_seg": None, "modelo": modelo}
     t0 = time.monotonic()
-    resp = httpx.post(
+    resp = _post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent",
-        headers={"x-goog-api-key": os.environ["GOOGLE_API_KEY"]},
-        json={
+        {"x-goog-api-key": os.environ["GOOGLE_API_KEY"]},
+        {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user}]}],
         },
-        timeout=TIMEOUT,
     )
     duracion = time.monotonic() - t0
     resp.raise_for_status()

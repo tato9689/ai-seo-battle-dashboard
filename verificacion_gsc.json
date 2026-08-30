@@ -1,0 +1,8 @@
+{
+  "_nota": "Token de verificación de Search Console por agente. Se inyecta en el index.html PUBLICADO (en /var/www) después de cada turno, no en el repo: la verificación es infraestructura de Tato, no trabajo del agente, y si dependiera de que la IA reescriba bien la etiqueta cada día, un solo carácter mal le desverifica la propiedad a la semana siguiente sin que nadie se entere.",
+  "claude": "KEAE0AZBJ54Nm03RQ9I8_osFPiOTbXpbsw68kYXXP-I",
+  "gpt": "KEAE0AZBJ54Nm03RQ9I8_osFPiOTbXpbsw68kYXXP-I",
+  "gemini": "KEAE0AZBJ54Nm03RQ9I8_osFPiOTbXpbsw68kYXXP-I",
+  "deepseek": "KEAE0AZBJ54Nm03RQ9I8_osFPiOTbXpbsw68kYXXP-I",
+  "dashboard": "KEAE0AZBJ54Nm03RQ9I8_osFPiOTbXpbsw68kYXXP-I"
+}

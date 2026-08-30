@@ -43,6 +43,13 @@ import guardarrailes  # noqa: E402
 import generar_feeds  # noqa: E402
 import portada  # noqa: E402
 import presupuesto  # noqa: E402
+import busqueda  # noqa: E402
+import tendencias  # noqa: E402
+import poller  # noqa: E402
+import envio_newsletter  # noqa: E402
+# Con nombre propio: dentro de ejecutar() hay una variable local `avisos`
+# (los del filtro de guardarraíles) que taparía el módulo.
+from avisos import enviar as avisar_telegram  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
@@ -246,6 +253,86 @@ def tier_elegido(repo_dir: Path, por_defecto: str) -> str:
     return por_defecto
 
 
+MAX_CONSULTAS = 3
+
+
+def bloqueo_anterior(repo_dir: Path) -> str:
+    """Por qué se descartó su último turno, si se descartó.
+
+    Sin esto, un guardarraíl bloquea pero no enseña: el agente repite el
+    mismo fallo cada día sin enterarse nunca de que su trabajo no llegó a
+    publicarse. Se lee del log público, que ya guarda el motivo exacto.
+    """
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return ""
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not isinstance(eventos, list) or not eventos:
+        return ""
+    ultimo = eventos[0]
+    if not isinstance(ultimo, dict) or ultimo.get("resultado") != "error":
+        return ""
+    detalle = ultimo.get("detalle_error") or ""
+    return str(detalle)[:1200]
+
+
+def consultas_pedidas(repo_dir: Path) -> list[str]:
+    """Las búsquedas que el agente pidió en su turno anterior.
+
+    Mismo patrón que `tier_elegido`: la petición sale del log público, no de
+    un fichero de estado aparte, así que lo que buscó y por qué quedan juntos
+    y a la vista. Y sobre todo no cuesta una llamada extra: pedir las
+    consultas dentro del JSON de salida del turno anterior deja el ciclo en
+    una sola llamada al modelo por turno, igual que antes.
+    """
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return []
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(eventos, list):
+        return []
+    for ev in eventos:  # el más reciente primero
+        if not isinstance(ev, dict):
+            continue
+        pedidas = ev.get("consultas_siguiente_turno")
+        if isinstance(pedidas, list) and pedidas:
+            return [str(c)[:200] for c in pedidas if isinstance(c, str) and c.strip()][:MAX_CONSULTAS]
+    return []
+
+
+def contexto_busqueda(repo_dir: Path, cfg: dict) -> dict:
+    """Ejecuta las búsquedas que pidió el agente y devuelve sus resultados.
+
+    La fase la decide el sistema con la fecha del checkpoint, nunca el
+    agente: en fase 1 el filtro de `busqueda.py` le esconde a los otros 3
+    competidores. Si la búsqueda falla, el turno sigue — quedarse sin
+    datos externos es peor que quedarse sin turno.
+    """
+    consultas = consultas_pedidas(repo_dir)
+    if not consultas:
+        return {}
+    fase = poller.derivar_fase(datetime.now(timezone.utc).isoformat(), cfg.get("checkpoint_fase2"))
+    salida = {}
+    for consulta in consultas:
+        try:
+            bloque = busqueda.buscar(consulta, fase=fase, n=5, cfg=cfg)
+        except Exception as e:
+            bloque = {"resultados": [], "descartados": 0, "fase": fase, "error": str(e)}
+        # Autocompletado y Trends viajan pegados a la consulta que el agente ya
+        # pidió: así el reparto es simétrico por construcción —nadie puede
+        # pedir más señal que otro— y el contrato de salida no cambia.
+        bloque["autocompletado_google"] = tendencias.sugerencias(consulta)
+        bloque["google_trends"] = tendencias.tendencia(consulta)
+        salida[consulta] = bloque
+    return salida
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -315,9 +402,13 @@ def url_commit(repo_dir: Path, sha: str) -> str:
     return f"{remoto.removesuffix('.git')}/commit/{sha}"
 
 
-def _config_agente(ia: str) -> dict:
+def _config_completa() -> dict:
     with open(DASHBOARD_DIR / "config.json", encoding="utf-8") as fh:
-        cfg = json.load(fh)
+        return json.load(fh)
+
+
+def _config_agente(ia: str) -> dict:
+    cfg = _config_completa()
     for agente in cfg.get("agentes", []):
         if agente.get("ia") == ia:
             return agente
@@ -362,13 +453,61 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     system = cargar_prompt_sistema(ia)
     ctx = contexto_metricas(ia)
     tarea = "la newsletter semanal" if newsletter else "tu tarea diaria habitual"
+
+    # Turno semanal con la lista vacía: no se hace. Es el único turno que usa
+    # el modelo flagship y el presupuesto tiene que llegar a 10 meses, así que
+    # escribir un correo que no va a recibir nadie es gasto puro. La pieza
+    # pública de ese domingo ya la ha escrito el turno diario del mismo día,
+    # de modo que no se pierde nada indexable. Va aquí arriba, antes de las
+    # búsquedas y de la llamada, para no gastar tampoco en el contexto.
+    if newsletter and not dry_run:
+        lista = _config_agente(ia).get("listmonk_list_id")
+        seguir, motivo = envio_newsletter.hay_a_quien_enviar(_config_completa(), lista)
+        if not seguir:
+            print(f"[{ia}] newsletter no enviada: {motivo}")
+            registrar_evento(repo_dir, {
+                "evento_id": f"{date.today().isoformat()}-sin-suscriptores",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "modelo_exacto": None, "tipo_tarea": None, "input_contexto": ctx,
+                "razonamiento": "", "accion_tipo": "sin-suscriptores",
+                "output_resumen": f"turno de newsletter saltado: {motivo}",
+                "output_url": None,
+                "tokens_in": None, "tokens_out": None, "coste_estimado": None,
+                # `exito` y no `error` a propósito: no se ha roto nada, es la
+                # decisión correcta. Marcarlo como error dispararía el aviso
+                # de Telegram del poller y ensuciaría la tasa de error del
+                # marcador todas las semanas hasta el primer suscriptor.
+                "duracion_seg": None, "resultado": "exito", "detalle_error": None,
+            })
+            return
     from clientes import MODELOS  # noqa: E402  (import local: evita ciclo al arrancar)
     ctx_presu = presupuesto.contexto_para_agente(
         ia, MODELOS.get(ia, {}), PRECIOS_APROX_POR_M_TOKENS
     )
+    base_url = base_url_agente(ia)
+    motivo = bloqueo_anterior(repo_dir)
+    aviso_bloqueo = (
+        f"ATENCIÓN: tu turno anterior NO se publicó. El filtro lo descartó entero por esto:\n"
+        f"{motivo}\n"
+        f"Corrígelo hoy antes que nada; si vuelves a caer en lo mismo pierdes otro día.\n\n"
+    ) if motivo else ""
+    cfg_completa = _config_completa()
+    resultados_busqueda = contexto_busqueda(repo_dir, cfg_completa)
+    bloque_busqueda = ""
+    if resultados_busqueda:
+        bloque_busqueda = (
+            "Resultados de las búsquedas que pediste en tu turno anterior "
+            f"(`descartados` son resultados del propio experimento que el filtro de fase te ocultó):\n"
+            f"{json.dumps(resultados_busqueda, ensure_ascii=False)}\n\n"
+        )
     user = (
+        f"Tu sitio vive en {base_url} y ese es el dominio que va en tus canonical, "
+        f"tus og:url y tus enlaces absolutos. Nunca escribas un marcador tipo "
+        f"[SUBDOMINIO] ni inventes otro dominio: el filtro descarta el turno entero.\n\n"
+        f"{aviso_bloqueo}"
         f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
         f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
+        f"{bloque_busqueda}"
         f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
     )
 
@@ -417,8 +556,25 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     print(f"[{ia}] {datos.get('accion_tipo')}: {datos.get('output_resumen')}")
 
     if dry_run:
+        # Un dry-run que solo enseña el JSON no responde la única pregunta que
+        # importa antes de un lanzamiento: ¿este turno se habría publicado?
+        # Así que pasa por los mismos guardarraíles que el turno real.
         print("--dry-run: no se escribe ni commitea nada.")
-        print(json.dumps(datos, ensure_ascii=False, indent=2))
+        try:
+            prueba = {
+                ruta_segura(repo_dir, a["ruta"]).relative_to(repo_dir).as_posix(): a["contenido_completo"]
+                for a in datos.get("archivos", [])
+            }
+        except (ValueError, KeyError) as e:
+            print(f"[{ia}] salida no aplicable: {e}", file=sys.stderr)
+            return
+        bloqueantes, avisos = guardarrailes.validar(repo_dir, prueba)
+        for aviso in avisos:
+            print(f"[{ia}] aviso: {aviso}")
+        if bloqueantes:
+            print(f"[{ia}] SE HABRÍA BLOQUEADO: " + "; ".join(bloqueantes), file=sys.stderr)
+        else:
+            print(f"[{ia}] pasa los guardarraíles ({len(prueba)} archivos)")
         return
 
     archivos = datos.get("archivos", [])
@@ -465,7 +621,6 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_text(contenido, encoding="utf-8")
 
-    base_url = base_url_agente(ia)
     # Portadas y feeds los genera el sistema, no la IA: es trabajo mecánico
     # que sale gratis, siempre correcto, y viaja en el mismo commit que el
     # contenido al que pertenece.
@@ -474,6 +629,42 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
 
     commit_hash = git_commit(repo_dir, f"{datos.get('accion_tipo', 'cambio')}: {datos.get('output_resumen', '')}")
     cambios = resumen_cambios(repo_dir, commit_hash)
+
+    # El correo, ya con la pieza publicada y commiteada: si el envío falla,
+    # el contenido de esa semana no se pierde ni se queda sin justificar en
+    # el log. El cuerpo pasa por los guardarraíles de contenido igual que una
+    # página — es lo mismo que se publica, pero llegando a bandejas reales.
+    envio = None
+    payload = datos.get("newsletter") or {}
+    if isinstance(payload, dict) and payload.get("cuerpo_html") and not dry_run:
+        bloq_nl, avisos_nl = guardarrailes.validar_newsletter(payload.get("cuerpo_html", ""))
+        for aviso in avisos_nl:
+            print(f"[{ia}] aviso newsletter: {aviso}")
+        if bloq_nl:
+            envio = {"enviado": False, "motivo": "bloqueado por guardarraíles: " + "; ".join(bloq_nl)}
+            avisar_telegram(f"⛔ AI SEO Battle: newsletter de {ia} bloqueada — {'; '.join(bloq_nl)}")
+        else:
+            try:
+                envio = envio_newsletter.enviar(
+                    _config_completa(), ia, _config_agente(ia).get("listmonk_list_id"),
+                    payload.get("asunto", ""), payload["cuerpo_html"],
+                )
+            except Exception as e:
+                # Un fallo de envío no invalida el turno (la pieza ya está
+                # publicada), pero tiene que verse: es la única vía por la
+                # que el experimento capta suscriptores.
+                envio = {"enviado": False, "motivo": f"error de Listmonk: {e}"}
+            if envio.get("enviado"):
+                avisar_telegram(
+                    f"📬 AI SEO Battle: {ia} envió su newsletter «{envio['asunto']}» "
+                    f"a {envio['suscriptores']} suscriptores"
+                )
+            else:
+                avisar_telegram(f"⚠️ AI SEO Battle: {ia} no envió newsletter — {envio.get('motivo')}")
+    elif newsletter and not dry_run:
+        # Turno semanal que sí tenía a quien escribir y no devolvió correo.
+        envio = {"enviado": False, "motivo": "el turno semanal no devolvió el campo newsletter"}
+        avisar_telegram(f"⚠️ AI SEO Battle: turno semanal de {ia} sin campo newsletter — no salió ningún correo")
 
     evento = {
         "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
@@ -489,6 +680,13 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # Con qué modelo pidió trabajar el próximo turno, y con cuál se le
         # llamó en este. Publicarlo hace visible cómo administra su gasto.
         "modelo_siguiente": datos.get("modelo_siguiente"),
+        # Qué quiere buscar en su próximo turno. Se ejecuta entonces, no
+        # ahora: así el ciclo sigue siendo una sola llamada por turno.
+        "consultas_siguiente_turno": datos.get("consultas_siguiente_turno"),
+        "busquedas_recibidas": sorted(resultados_busqueda) or None,
+        # Qué pasó con el correo: enviado y a cuántos, o por qué no. Va al log
+        # público porque es la métrica que decide el experimento.
+        "envio": envio,
         "tier_usado": tier,
         "tokens_in": resultado["tokens_in"],
         "tokens_out": resultado["tokens_out"],
