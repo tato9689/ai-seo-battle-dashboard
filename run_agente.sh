@@ -72,9 +72,13 @@ sed -e "s/\[NOMBRE DEL PROYECTO\/NEWSLETTER\]/${IA}.${DOM}/g" \
 # marcadores solo mira lo que escribe el agente, y el robots.txt no lo
 # escribe él, así que la última palabra tiene que estar aquí. Sustituye el
 # marcador, no reescribe el fichero: lo que el agente añadiera se conserva.
+# El `|| true` final es necesario: no encontrar el marcador es el caso
+# normal a partir del día 1 (ya se sustituyó una vez), y sin él `grep -rl`
+# sin coincidencias devuelve 1, que con `pipefail` tumbaba el script entero
+# aunque el turno se hubiera publicado bien (así fallaron los turnos de hoy).
 grep -rl '\[SUBDOMINIO\]' "$DESTINO" 2>/dev/null | while read -r f; do
   sed -i "s/\[SUBDOMINIO\]/${IA}.${DOM}/g" "$f"
-done
+done || true
 
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/verificacion.py "$IA" "$DESTINO"
 chown -R root:caddy "$DESTINO"
