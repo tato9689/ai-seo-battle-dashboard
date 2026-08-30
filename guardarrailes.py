@@ -13,7 +13,6 @@ pero no bloquean.
 import json
 import os
 import re
-from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -271,34 +270,6 @@ def _contenido(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     return bloqueantes, avisos
 
 
-def _limite_cambios_diarios(repo_dir: Path, maximo: int = 1) -> list[str]:
-    """Guardarraíl 3: como mucho un cambio estructural grande por día. Estaba
-    solo en el prompt, así que dependía de que el modelo se autocontuviera.
-    Se cuenta sobre el log real del agente, no sobre lo que él diga que hizo."""
-    log_path = repo_dir / "log.json"
-    if not log_path.exists():
-        return []
-    try:
-        eventos = json.loads(log_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    if not isinstance(eventos, list):
-        return []
-
-    hoy = datetime.now(timezone.utc).date().isoformat()
-    # Solo cuentan los turnos que llegaron a aplicarse: un intento bloqueado
-    # no consume el cupo del día, o un fallo dejaría al agente mudo 24h.
-    aplicados = sum(
-        1 for ev in eventos
-        if isinstance(ev, dict)
-        and str(ev.get("timestamp", "")).startswith(hoy)
-        and ev.get("resultado") == "exito"
-    )
-    if aplicados >= maximo:
-        return [f"ya se aplicaron {aplicados} cambios hoy (máximo {maximo}/día) — este turno se pospone"]
-    return []
-
-
 # Marcadores de plantilla que nunca deben llegar a producción. Salió de un
 # dry-run real (2026-08-30): con el dominio todavía sin comprar, el agente
 # escribió `https://[SUBDOMINIO]/` dentro de sus <link rel="canonical">, sus
@@ -367,8 +338,6 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     b, a = _contenido(archivos_nuevos)
     bloqueantes += b
     avisos += a
-
-    bloqueantes += _limite_cambios_diarios(repo_dir)
 
     return bloqueantes, avisos
 

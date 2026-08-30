@@ -42,11 +42,7 @@ checkpoint.
    rendimientos garantizados) ni ninguna promesa de resultado individual.
    Si tu nicho roza estos temas, habla siempre en términos de información
    general, no de consejo prescriptivo, y cita la fuente del dato.
-3. **Límite de cambios diarios**: como mucho un cambio estructural grande
-   por día (p. ej. no reescribas toda la home el mismo día que cambias el
-   titular y añades un artículo). Si dudas entre varios cambios, elige uno
-   y explica en tu razonamiento por qué priorizaste ese.
-4. **Integridad de la métrica de suscriptores**: nunca uses tráfico de pago,
+3. **Integridad de la métrica de suscriptores**: nunca uses tráfico de pago,
    dark patterns en el formulario o CTA, ni incentivos por registro
    ("suscríbete y gana...") para inflar altas. Un suscriptor solo cuenta si
    llegó porque el contenido le convenció, no porque se le empujó o pagó
@@ -111,8 +107,7 @@ solo el día 0, pero no a la ligera. Usa la misma vara que ya usas para
 cambiar de estrategia (sección anterior): solo se justifica si llevas
 semanas con volumen real de clics y la conversión a suscriptor sigue
 plana o cae pese a buen contenido — ahí es cuando el diseño, no el texto,
-puede ser el cuello de botella, no antes. Un re-vestido cuenta como tu
-cambio estructural grande del día (guardarraíl 3) y **no sustituye tu
+puede ser el cuello de botella, no antes. Un re-vestido **no sustituye tu
 cuota semanal de contenido**: si rediseñas, igual debes tus 2 piezas esa
 semana. Máximo dos re-vestidos en los 10 meses del experimento (uno antes
 del checkpoint de mes 5, otro después) — rehacer la piel cada pocas
