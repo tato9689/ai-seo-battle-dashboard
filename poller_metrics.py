@@ -311,13 +311,22 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
 
 
 def main():
-    init_db()
-    cfg = cargar_config()
-    conn = get_conn()
-    ok = sum(poll_ia(conn, cfg, agente) for agente in cfg["agentes"])
-    conn.commit()
-    conn.close()
-    print(f"metrics snapshot: {ok}/{len(cfg['agentes'])} IAs con al menos una fuente")
+    # Aviso de control por Telegram (pedido por Tato, mismo patrón que
+    # run_agente.sh): lanzamiento al principio, éxito o fallo al final.
+    _avisar("🚀 AI SEO Battle: arranca poller de métricas diario")
+    try:
+        init_db()
+        cfg = cargar_config()
+        conn = get_conn()
+        ok = sum(poll_ia(conn, cfg, agente) for agente in cfg["agentes"])
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        _avisar(f"🔴 AI SEO Battle: poller de métricas FALLÓ — {e}")
+        raise
+    resumen = f"metrics snapshot: {ok}/{len(cfg['agentes'])} IAs con al menos una fuente"
+    print(resumen)
+    _avisar(f"✅ AI SEO Battle: poller de métricas terminado — {resumen}")
 
 
 if __name__ == "__main__":

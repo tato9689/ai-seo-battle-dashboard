@@ -26,7 +26,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from clientes import IAS
+from clientes import IAS, GASTO_CONSEJO
 
 ACTAS_DIR = Path(__file__).parent / "actas"
 
@@ -127,6 +127,13 @@ def debate(pregunta: str, rondas: int = 2, modo: str = "mixto") -> Path:
                 respuestas, contexto = ronda_turnos(contexto, orden)
                 _formatear_ronda(acta_md, n_ronda, "turnos", orden, respuestas)
 
+    if GASTO_CONSEJO:
+        total = sum(c for _, _, c in GASTO_CONSEJO)
+        acta_md.append("\n## Coste real de este consejo\n")
+        for ia, modelo, coste in GASTO_CONSEJO:
+            acta_md.append(f"- {ia} ({modelo}): ${coste:.4f}")
+        acta_md.append(f"\n**Total: ${total:.4f}**")
+
     slug = "".join(c if c.isalnum() else "-" for c in pregunta.lower())[:50].strip("-")
     fecha = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     ACTAS_DIR.mkdir(exist_ok=True)
@@ -144,3 +151,5 @@ if __name__ == "__main__":
     modo = sys.argv[3] if len(sys.argv) > 3 else "mixto"
     path = debate(pregunta, rondas, modo)
     print(f"Acta guardada en {path}")
+    if GASTO_CONSEJO:
+        print(f"Coste real de este consejo: ${sum(c for _, _, c in GASTO_CONSEJO):.4f}")

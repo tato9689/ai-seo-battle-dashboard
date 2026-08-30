@@ -37,7 +37,7 @@ DASHBOARD_DIR = Path(__file__).parent
 sys.path.insert(0, str(DASHBOARD_DIR))
 sys.path.insert(0, str(DASHBOARD_DIR / "consulta_ias"))
 
-from clientes import llamar_con_metadata  # noqa: E402
+from clientes import llamar_con_metadata, precio_de, coste_estimado  # noqa: E402
 from db import get_conn, init_db  # noqa: E402
 import guardarrailes  # noqa: E402
 import generar_feeds  # noqa: E402
@@ -53,70 +53,10 @@ from avisos import enviar as avisar_telegram  # noqa: E402
 
 PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 
-# Precios (entrada, salida) en USD por millón de tokens, CONTRASTADOS con la
-# documentación oficial de los 4 proveedores el 2026-08-29. La tabla anterior
-# era una extrapolación y estaba muy desviada — Haiku se estimaba 4x por
-# debajo de su precio real, lo que habría hecho que el freno de presupuesto
-# dejara gastar cuatro veces más de lo previsto antes de saltar.
-#
-# De estos números depende cuándo se degrada y cuándo se corta, así que
-# conviene repasarlos si algún proveedor cambia tarifas a mitad de
-# experimento. La cifra que manda para facturar sigue siendo la de la consola.
-PRECIOS_APROX_POR_M_TOKENS = {
-    # Anthropic — precios de la referencia oficial de la API.
-    "claude-haiku-4-5-20251001": (1.0, 5.0),
-    "claude-sonnet-5": (2.0, 10.0),
-    "claude-opus-5": (5.0, 25.0),
-    # OpenAI — developers.openai.com/api/docs/pricing.
-    "gpt-5.4-mini": (0.75, 4.5),
-    "gpt-5.4": (2.5, 15.0),
-    "gpt-5.5-pro-2026-04-23": (30.0, 180.0),
-    # Google — ai.google.dev/gemini-api/docs/pricing. Flash tiene precio
-    # promocional hasta el 31/12/2026 (después dobla): el experimento acaba
-    # mucho antes, pero conviene saberlo si se alarga.
-    "gemini-3.1-flash-lite": (0.25, 1.5),
-    "gemini-3.7-flash": (0.75, 3.75),
-    "gemini-3.1-pro-preview": (2.0, 12.0),
-    # DeepSeek — api-docs.deepseek.com. Tiene tarifa punta y valle (la valle
-    # es la mitad); se apuntan los precios de PUNTA a propósito, porque
-    # sobreestimar el gasto es el error barato en un freno de presupuesto.
-    # Horas punta: 01:00-04:00 y 06:00-10:00 UTC de lunes a viernes.
-    "deepseek-v4-flash": (0.44, 1.32),
-    "deepseek-v4-pro": (1.32, 3.96),
-}
-
-
-def precio_de(modelo: str) -> tuple[float, float] | None:
-    """Precio del modelo, tolerando los snapshots con fecha.
-
-    Las APIs devuelven el snapshot exacto que sirvieron (`gpt-5.4-mini` llega
-    como `gpt-5.4-mini-2026-03-17`), y buscarlo tal cual en la tabla no
-    encontraba nada: el coste salía `None` y el freno de presupuesto se
-    quedaba ciego para ese agente sin que nada lo avisara. Se busca primero
-    la coincidencia exacta y luego el nombre base más largo que encaje.
-    """
-    if not modelo:
-        return None
-    if modelo in PRECIOS_APROX_POR_M_TOKENS:
-        return PRECIOS_APROX_POR_M_TOKENS[modelo]
-    candidatos = [k for k in PRECIOS_APROX_POR_M_TOKENS if modelo.startswith(k)]
-    if not candidatos:
-        return None
-    # El más largo evita que "gpt-5.4" se lleve lo que es de "gpt-5.4-mini".
-    return PRECIOS_APROX_POR_M_TOKENS[max(candidatos, key=len)]
-
-
-def coste_estimado(modelo: str, tokens_in: int | None, tokens_out: int | None) -> float | None:
-    precio = precio_de(modelo)
-    if precio is None:
-        # Avisar en voz alta: un modelo sin precio no suma al gasto, y el
-        # freno de presupuesto lo daría por gratis indefinidamente.
-        print(f"AVISO: sin precio para {modelo!r}, esta llamada no cuenta para el presupuesto", file=sys.stderr)
-        return None
-    if tokens_in is None or tokens_out is None:
-        return None
-    precio_in, precio_out = precio
-    return round(tokens_in / 1_000_000 * precio_in + tokens_out / 1_000_000 * precio_out, 6)
+# La tabla de precios y el cálculo de coste viven en clientes.py (precio_de,
+# coste_estimado) desde 2026-08-30: consulta_ias/debate.py (el consejo de
+# sabios) también necesita saber cuánto cuesta cada llamada, y ese módulo no
+# puede importar de aquí sin crear un ciclo (aquí ya se importa de clientes).
 
 
 def cargar_prompt_sistema(ia: str) -> str:
@@ -518,7 +458,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
                 "duracion_seg": None, "resultado": "exito", "detalle_error": None,
             })
             return
-    from clientes import MODELOS  # noqa: E402  (import local: evita ciclo al arrancar)
+    from clientes import MODELOS, PRECIOS_APROX_POR_M_TOKENS  # noqa: E402  (import local: evita ciclo al arrancar)
     ctx_presu = presupuesto.contexto_para_agente(
         ia, MODELOS.get(ia, {}), PRECIOS_APROX_POR_M_TOKENS
     )

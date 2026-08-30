@@ -7,6 +7,40 @@ set -euo pipefail
 IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter]}"
 shift || true
 
+TIPO="turno diario"
+[[ "$*" == *"--newsletter"* ]] && TIPO="newsletter semanal"
+
+# Aviso de control por Telegram (pedido por Tato para vigilar los 8 turnos
+# reales de las 4 IAs): lanzamiento al principio, éxito o fallo al final, vía
+# trap EXIT para que cubra cualquier salida del script (incluida la del
+# guardarraíl de DESTINO más abajo). No bloqueante: un fallo de Telegram no
+# debe tumbar el turno, por eso avisar() nunca propaga su propio error.
+avisar() {
+  /root/ai-seo-battle-dashboard/venv/bin/python - "$1" <<'PY' || true
+import sys
+sys.path.insert(0, "/root/ai-seo-battle-dashboard")
+from avisos import enviar
+try:
+    enviar(sys.argv[1])
+except Exception as e:
+    print(f"[avisar] fallo enviando a Telegram: {e}", file=sys.stderr)
+PY
+}
+
+on_exit() {
+  local rc=$?
+  if [ "$rc" -eq 0 ]; then
+    local dom
+    dom=$(cat /root/ai-seo-battle-dashboard/.dominio 2>/dev/null || echo '?')
+    avisar "✅ AI SEO Battle: ${TIPO} de ${IA} completado y publicado en https://${IA}.${dom}"
+  else
+    avisar "🔴 AI SEO Battle: ${TIPO} de ${IA} FALLÓ (código ${rc}) — revisa logs/cron-${IA}.log"
+  fi
+}
+trap on_exit EXIT
+
+avisar "🚀 AI SEO Battle: arranca ${TIPO} de ${IA}"
+
 # Candado: los turnos van escalonados cada 15 min, pero un modelo lento puede
 # pasarse y solaparse con el siguiente. Los cuatro escriben en la misma SQLite
 # y en el mismo log, así que se serializan. flock espera, no descarta: perder

@@ -8,11 +8,76 @@ inventados. Las keys se leen de variables de entorno, ninguna se guarda en
 disco.
 """
 import os
+import sys
 import time
 
 import httpx
 
 TIMEOUT = 300
+
+# Precios (entrada, salida) en USD por millón de tokens, CONTRASTADOS con la
+# documentación oficial de los 4 proveedores el 2026-08-29. Vive aquí (y no
+# en cron_agente.py, donde nació) porque consulta_ias/debate.py — el consejo
+# de sabios — también necesita saber cuánto cuesta cada llamada, sobre todo
+# en el tier "consejo": es el más caro con diferencia (gpt-5.5-pro a 180
+# $/M tokens de salida) y el que se dispara a mano sin freno de presupuesto
+# diario. Se acabaron 10$ de crédito real de OpenAI el 2026-08-30 sin que
+# nada lo avisara con tiempo — motivo de este cambio.
+PRECIOS_APROX_POR_M_TOKENS = {
+    # Anthropic — precios de la referencia oficial de la API.
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+    "claude-sonnet-5": (2.0, 10.0),
+    "claude-opus-5": (5.0, 25.0),
+    # OpenAI — developers.openai.com/api/docs/pricing.
+    "gpt-5.4-mini": (0.75, 4.5),
+    "gpt-5.4": (2.5, 15.0),
+    "gpt-5.5-pro-2026-04-23": (30.0, 180.0),
+    # Google — ai.google.dev/gemini-api/docs/pricing. Flash tiene precio
+    # promocional hasta el 31/12/2026 (después dobla): el experimento acaba
+    # mucho antes, pero conviene saberlo si se alarga.
+    "gemini-3.1-flash-lite": (0.25, 1.5),
+    "gemini-3.7-flash": (0.75, 3.75),
+    "gemini-3.1-pro-preview": (2.0, 12.0),
+    # DeepSeek — api-docs.deepseek.com. Tiene tarifa punta y valle (la valle
+    # es la mitad); se apuntan los precios de PUNTA a propósito, porque
+    # sobreestimar el gasto es el error barato en un freno de presupuesto.
+    # Horas punta: 01:00-04:00 y 06:00-10:00 UTC de lunes a viernes.
+    "deepseek-v4-flash": (0.44, 1.32),
+    "deepseek-v4-pro": (1.32, 3.96),
+}
+
+
+def precio_de(modelo: str) -> tuple[float, float] | None:
+    """Precio del modelo, tolerando los snapshots con fecha.
+
+    Las APIs devuelven el snapshot exacto que sirvieron (`gpt-5.4-mini` llega
+    como `gpt-5.4-mini-2026-03-17`), y buscarlo tal cual en la tabla no
+    encontraba nada: el coste salía `None` y el freno de presupuesto se
+    quedaba ciego para ese agente sin que nada lo avisara. Se busca primero
+    la coincidencia exacta y luego el nombre base más largo que encaje.
+    """
+    if not modelo:
+        return None
+    if modelo in PRECIOS_APROX_POR_M_TOKENS:
+        return PRECIOS_APROX_POR_M_TOKENS[modelo]
+    candidatos = [k for k in PRECIOS_APROX_POR_M_TOKENS if modelo.startswith(k)]
+    if not candidatos:
+        return None
+    # El más largo evita que "gpt-5.4" se lleve lo que es de "gpt-5.4-mini".
+    return PRECIOS_APROX_POR_M_TOKENS[max(candidatos, key=len)]
+
+
+def coste_estimado(modelo: str, tokens_in: int | None, tokens_out: int | None) -> float | None:
+    precio = precio_de(modelo)
+    if precio is None:
+        # Avisar en voz alta: un modelo sin precio no suma al gasto, y el
+        # freno de presupuesto (o el consejo) lo daría por gratis indefinidamente.
+        print(f"AVISO: sin precio para {modelo!r}, esta llamada no cuenta para el gasto", file=sys.stderr)
+        return None
+    if tokens_in is None or tokens_out is None:
+        return None
+    precio_in, precio_out = precio
+    return round(tokens_in / 1_000_000 * precio_in + tokens_out / 1_000_000 * precio_out, 6)
 
 # La API de Anthropic exige max_tokens explícito; OpenAI, Gemini y DeepSeek no
 # lo piden y sirven su máximo por defecto. Estaba en 2048, que da para una
@@ -63,7 +128,13 @@ MODELOS = {
         # contra /v1/models el 2026-08-30.
         "diaria": "gpt-5.4-mini-2026-03-17",
         "semanal": "gpt-5.4-2026-03-05",
-        "consejo": "gpt-5.5-pro-2026-04-23",
+        # Bajado de gpt-5.5-pro (30/180 $/M, el más caro de los 12) a
+        # gpt-5.4 (2.5/15.0) el 2026-08-30: gpt-5.5-pro se comió 10$ de
+        # crédito real de OpenAI en un puñado de consultas del consejo y
+        # dejó la cuenta a cero (insufficient_quota). Sigue siendo el
+        # flagship de la casa, solo que el de coste contenido en vez del
+        # más caro del catálogo — mismo modelo que "semanal".
+        "consejo": "gpt-5.4-2026-03-05",
     },
     # Google tampoco da ids fechados en su ListModels (verificado el
     # 2026-08-30): gemini-3.7-flash y gemini-3.1-* son alias movibles. Mismo
@@ -95,6 +166,11 @@ def _post(url: str, headers: dict, cuerpo: dict) -> httpx.Response:
     for intento in range(4):
         resp = httpx.post(url, headers=headers, json=cuerpo, timeout=TIMEOUT)
         if resp.status_code != 429 and resp.status_code < 500:
+            return resp
+        # Crédito agotado: es un 429 pero reintentar con backoff no lo
+        # arregla nunca (pasó el 2026-08-30, 4 intentos reales sin cambiar
+        # nada). Se detecta por el cuerpo, no solo el código, y se corta ya.
+        if resp.status_code == 429 and "insufficient_quota" in resp.text:
             return resp
         if intento < 3:
             time.sleep(2 ** intento)
@@ -255,22 +331,51 @@ def llamar_con_metadata(ia: str, system: str, user: str, tier: str = "diaria", m
 
 
 # --- wrappers de solo texto, usados por consulta_ias/debate.py (consejo de
-# sabios) — tier "consejo": el modelo más potente de cada casa, ver MODELOS ---
+# sabios) — tier "consejo": el modelo más potente (de coste contenido) de
+# cada casa, ver MODELOS ---
+
+# Gasto real del consejo en curso, para que quede visible en la consola y en
+# el acta — antes no se veía nada hasta que la cuenta se quedaba a cero
+# (pasó el 2026-08-30 con gpt-5.5-pro). Se reinicia cada vez que se importa
+# el módulo, o sea una vez por ejecución de debate.py: es justo lo que se
+# quiere medir, el coste de ESE consejo.
+GASTO_CONSEJO: list[tuple[str, str, float]] = []  # (ia, modelo, coste_usd)
+
+
+def _llamar_consejo(ia: str, system: str, user: str) -> str:
+    """Wrapper de una IA para el consejo: nunca deja que un fallo de ESTA
+    IA (cuenta sin crédito, 5xx persistente) tire las respuestas de las
+    otras 3, que ya están pagadas. Antes una excepción aquí reventaba el
+    `asyncio.gather` entero y no se guardaba ni una sola acta — pasó tres
+    veces el 2026-08-30 con las otras 3 ya respondidas y pagadas."""
+    try:
+        resultado = llamar_con_metadata(ia, system, user, tier="consejo")
+    except httpx.HTTPStatusError as e:
+        return f"[error de {ia} ({e.response.status_code}): {e.response.text[:200]}]"
+    except httpx.RequestError as e:
+        return f"[error de red llamando a {ia}: {e}]"
+    coste = coste_estimado(resultado["modelo"], resultado.get("tokens_in"), resultado.get("tokens_out"))
+    if coste is not None:
+        GASTO_CONSEJO.append((ia, resultado["modelo"], coste))
+        print(f"[{ia}] {resultado['modelo']}: ${coste:.4f} "
+              f"({resultado.get('tokens_in')} in / {resultado.get('tokens_out')} out)", file=sys.stderr)
+    return resultado["texto"]
+
 
 def llamar_claude(system: str, user: str) -> str:
-    return llamar_con_metadata("claude", system, user, tier="consejo")["texto"]
+    return _llamar_consejo("claude", system, user)
 
 
 def llamar_gpt(system: str, user: str) -> str:
-    return llamar_con_metadata("gpt", system, user, tier="consejo")["texto"]
+    return _llamar_consejo("gpt", system, user)
 
 
 def llamar_gemini(system: str, user: str) -> str:
-    return llamar_con_metadata("gemini", system, user, tier="consejo")["texto"]
+    return _llamar_consejo("gemini", system, user)
 
 
 def llamar_deepseek(system: str, user: str) -> str:
-    return llamar_con_metadata("deepseek", system, user, tier="consejo")["texto"]
+    return _llamar_consejo("deepseek", system, user)
 
 
 IAS = {
