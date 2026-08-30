@@ -291,6 +291,40 @@ def _marcadores(archivos_nuevos: dict[str, str]) -> list[str]:
 _RE_STYLE_BLOCK = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
 
 
+_RE_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
+
+
+def _jerarquia_portada(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso, no bloqueo: la portada sigue teniendo el bloque grande de
+    transparencia del esqueleto original (un `<h2>Esta web la gestiona
+    una IA</h2>` dentro de su propia sección), en vez de la barra fina sin
+    titular que pide la sección 'Jerarquía de portada y transparencia' del
+    prompt base. Comprobado en vivo el 2026-08-30: 3 de las 4 IAs llevaban
+    turnos publicando artículos nuevos sin tocar la portada ni una vez —
+    la guía sola, sin un check que la respalde, no bastaba (mismo patrón
+    que ya pasó con la piel visual). Gemini sí la rehizo: su bloque de
+    transparencia es texto suelto sin `<h2>`, así que este check no la
+    marca. Solo mira index.html — es la única página con jerarquía de
+    portada que pedir.
+    """
+    if "index.html" in archivos_nuevos:
+        index = archivos_nuevos["index.html"]
+    elif (repo_dir / "index.html").exists():
+        index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
+    else:
+        return []
+    for h2 in _RE_H2.findall(index):
+        if "gestiona una ia" in _texto_visible(h2).lower():
+            return [
+                "tu portada sigue con el bloque grande de transparencia "
+                "(<h2>) del esqueleto original, no la barra fina sin "
+                "titular que pide 'Jerarquía de portada y transparencia' "
+                "del prompt base. No bloquea el turno, pero se te repite "
+                "hasta que rehagas la portada."
+            ]
+    return []
+
+
 def _piel_visual(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
     """Aviso, no bloqueo: que el sitio entero siga sin una sola línea de CSS
     propia no es spam ni un riesgo legal, así que no encaja como bloqueante.
@@ -382,6 +416,7 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     avisos += a
 
     avisos += _piel_visual(repo_dir, archivos_nuevos)
+    avisos += _jerarquia_portada(repo_dir, archivos_nuevos)
 
     return bloqueantes, avisos
 
