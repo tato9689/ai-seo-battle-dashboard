@@ -512,6 +512,12 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
                 # marcador todas las semanas hasta el primer suscriptor.
                 "duracion_seg": None, "resultado": "exito", "detalle_error": None,
             })
+            # Sin esto el evento se queda escrito en disco pero sin commitear
+            # — un vistazo real el 2026-08-30: como 0 suscriptores es la
+            # situación normal en los primeros meses, esto pasaría CADA
+            # domingo en las 4 IAs, dejando el repo sucio hasta que otro
+            # commit posterior lo arrastrara sin querer con su `git add -A`.
+            git_commit(repo_dir, "log: registra turno de newsletter saltado por 0 suscriptores")
             return
     from clientes import MODELOS, PRECIOS_APROX_POR_M_TOKENS  # noqa: E402  (import local: evita ciclo al arrancar)
     ctx_presu = presupuesto.contexto_para_agente(
