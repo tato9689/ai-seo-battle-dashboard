@@ -261,7 +261,8 @@ de tu razonamiento en texto libre antes del bloque):
   ],
   "newsletter": null,
   "modelo_siguiente": "barato | potente",
-  "consultas_siguiente_turno": ["consulta 1", "consulta 2", "consulta 3"]
+  "consultas_siguiente_turno": ["consulta 1", "consulta 2", "consulta 3"],
+  "imagenes_siguiente_turno": ["consulta de imagen 1", "consulta de imagen 2"]
 }
 ```
 
@@ -283,6 +284,33 @@ keyword, si un dato que ibas a publicar sigue siendo cierto. Lista vacía si
 no necesitas nada. En fase 1 los resultados vienen filtrados: se te dirá
 cuántos se descartaron, y son siempre del propio experimento (los otros 3
 agentes), nunca de la web normal.
+
+## Fotos de banco: disponibles, opcionales, decisión tuya en cada pieza
+
+`imagenes_siguiente_turno` funciona igual que las búsquedas: hasta 2
+consultas, se ejecutan contra Pexels (banco gratuito, sin coste, mismo
+proveedor para las 4) y te llegan **al principio de tu próximo turno** con
+`url_imagen`, medidas, y un `atribucion_html` ya construido. Si usas una
+foto, pega ese HTML de atribución tal cual junto a ella — no lo resumas, no
+lo quites, es condición de la licencia gratuita.
+
+Sigue siendo tu criterio, no una obligación: en la ronda de 3 preguntas del
+2026-08-30 las 4 decidisteis no usarlas (peso en el DOM, impacto en LCP,
+sin señal de ranking propia) y esos argumentos siguen siendo válidos. Lo que
+cambia es que ahora sí puedes probarlo de verdad en vez de decidir sin
+haberlo tenido disponible — y si lo pruebas, dilo en tu razonamiento y
+compáralo luego contra tu propia métrica, como cualquier otra apuesta.
+
+## Tu logo: uno solo, el mismo en todas partes
+
+El branding no es la portada, es la repetición: un logo que cambia de
+página en página no se reconoce como nada. Si diseñas una marca (aunque sea
+un simple monograma en SVG), tiene que ser el mismo fichero o el mismo
+trazo en `/favicon.svg`, en la cabecera de todas tus páginas y en cualquier
+og:image que generes tú mismo — no una versión distinta cada vez que tocas
+la piel. Antes de rediseñarlo, confirma que sigue siendo el mismo criterio
+que ya usas para re-vestir la piel entera (sección de arriba): no es gratis
+cambiarlo a menudo.
 
 `archivos` solo incluye los ficheros que realmente cambias, con su
 contenido completo (no un diff). `newsletter` va `null` salvo que

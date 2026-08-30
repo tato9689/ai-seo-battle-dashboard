@@ -44,6 +44,7 @@ import generar_feeds  # noqa: E402
 import portada  # noqa: E402
 import presupuesto  # noqa: E402
 import busqueda  # noqa: E402
+import imagenes  # noqa: E402
 import tendencias  # noqa: E402
 import poller  # noqa: E402
 import envio_newsletter  # noqa: E402
@@ -273,6 +274,43 @@ def contexto_busqueda(repo_dir: Path, cfg: dict) -> dict:
     return salida
 
 
+def imagenes_pedidas(repo_dir: Path) -> list[str]:
+    """Mismo patrón que `consultas_pedidas`: lo que pidió el agente en su
+    turno anterior, vía `imagenes_siguiente_turno` en el log público."""
+    log_path = repo_dir / "log.json"
+    if not log_path.exists():
+        return []
+    try:
+        eventos = json.loads(log_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(eventos, list):
+        return []
+    for ev in eventos:  # el más reciente primero
+        if not isinstance(ev, dict):
+            continue
+        pedidas = ev.get("imagenes_siguiente_turno")
+        if isinstance(pedidas, list) and pedidas:
+            return [str(c)[:200] for c in pedidas if isinstance(c, str) and c.strip()][:MAX_CONSULTAS]
+    return []
+
+
+def contexto_imagenes(repo_dir: Path) -> dict:
+    """Busca en Pexels lo que el agente pidió. Sin clave configurada o con
+    la API caída, el turno sigue sin imágenes — igual que `contexto_busqueda`,
+    quedarse sin este dato no debe tumbar nada."""
+    consultas = imagenes_pedidas(repo_dir)
+    if not consultas:
+        return {}
+    salida = {}
+    for consulta in consultas:
+        try:
+            salida[consulta] = imagenes.buscar(consulta)
+        except Exception as e:
+            salida[consulta] = {"error": str(e)}
+    return salida
+
+
 MODELOS_VISTOS = DASHBOARD_DIR / "cache" / "modelos_vistos.json"
 
 
@@ -478,6 +516,16 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             f"(`descartados` son resultados del propio experimento que el filtro de fase te ocultó):\n"
             f"{json.dumps(resultados_busqueda, ensure_ascii=False)}\n\n"
         )
+    resultados_imagenes = contexto_imagenes(repo_dir)
+    bloque_imagenes = ""
+    if resultados_imagenes:
+        bloque_imagenes = (
+            "Fotos de banco (Pexels) para las búsquedas de imagen que pediste "
+            "en tu turno anterior. Usar cualquiera es opcional y decisión tuya "
+            "— si usas una, `atribucion_html` va tal cual junto a la imagen, "
+            "no lo resumas ni lo quites:\n"
+            f"{json.dumps(resultados_imagenes, ensure_ascii=False)}\n\n"
+        )
 
     # Freno de gasto ANTES de llamar. El límite de la consola del proveedor es
     # la red final, pero salta de golpe y deja al agente mudo sin explicación;
@@ -530,6 +578,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         f"Hoy toca {tarea}. Este es tu contexto real de métricas:\n{json.dumps(ctx, ensure_ascii=False)}\n\n"
         f"Este es tu presupuesto:\n{json.dumps(ctx_presu, ensure_ascii=False)}\n\n"
         f"{bloque_busqueda}"
+        f"{bloque_imagenes}"
         f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
     )
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
@@ -678,6 +727,10 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # ahora: así el ciclo sigue siendo una sola llamada por turno.
         "consultas_siguiente_turno": datos.get("consultas_siguiente_turno"),
         "busquedas_recibidas": sorted(resultados_busqueda) or None,
+        # Mismo patrón que las búsquedas: qué fotos quiere para su próximo
+        # turno, y qué le llegó de las que pidió en el anterior.
+        "imagenes_siguiente_turno": datos.get("imagenes_siguiente_turno"),
+        "imagenes_recibidas": sorted(resultados_imagenes) or None,
         # Qué pasó con el correo: enviado y a cuántos, o por qué no. Va al log
         # público porque es la métrica que decide el experimento.
         "envio": envio,
