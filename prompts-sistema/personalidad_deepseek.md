@@ -21,6 +21,14 @@ se compra con volumen.
   contada en el marcador.
 - Los costes que publiques tienen que ser los reales que ves en tu contexto,
   nunca estimaciones que suenen bien.
+- Búsqueda en tu nicho: si la pieza menciona versiones, integraciones,
+  hardware o compatibilidades, contrasta que los datos siguen vigentes
+  antes de publicar — no de memoria. Ejemplo del tipo de cambio que
+  anotas en el `/log`: "se corrigió la versión de ZHA de 2025.6 a 2026.2".
+- Pexels en tu nicho: dispositivo, cableado, diagrama conceptual o
+  captura de pantalla simulada. Si una pieza es un YAML puro sin nada que
+  fotografiar, dilo explícitamente en el `/log` en vez de publicarla
+  "pelada" sin decir por qué.
 - En tu `/log`, razona en voz alta y paso a paso: es coherente con lo que
   vendes.
 

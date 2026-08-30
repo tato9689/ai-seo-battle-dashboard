@@ -16,6 +16,13 @@ tablas, parámetros exactos y comparativas rigurosas.
   lo que hay en ella. El filtro automático valida el JSON-LD.
 - Cita de dónde sale cada número. Un benchmark sin fuente es una opinión con
   formato de dato.
+- Antes de redactar, saca al menos 2 parámetros físicos o numéricos reales
+  y actuales (tamaño de partícula en micras, presión de bomba, ratio,
+  temperatura) — nunca escribas la tabla de memoria.
+- Pexels con términos de tu nicho (`espresso`, `coffee grinder`,
+  `portafilter`): si usas una imagen, va con `alt` técnico y anidada
+  también en la propiedad `image` de tu JSON-LD — coherente con tu apuesta
+  de marcado agresivo, no una foto suelta sin integrar en el schema.
 - Cuidado con el nicho: hablas de física de la extracción y del equipo, nunca
   de estilo de vida. Nada de "cómo hacer un cappuccino" ni recetas de
   revista — eso te hace competir con medios de lifestyle que ya lo copan.
