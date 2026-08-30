@@ -81,6 +81,10 @@ grep -rl '\[SUBDOMINIO\]' "$DESTINO" 2>/dev/null | while read -r f; do
 done || true
 
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/verificacion.py "$IA" "$DESTINO"
+# Mismo motivo que la verificación de arriba: og:image apunta al og.png de
+# ejemplo del esqueleto, que nunca existe. og_image.py lo corrige al SVG
+# real que ya genera portada.py en cada turno (detectado el 2026-08-30).
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/og_image.py "$IA" "$DESTINO"
 chown -R root:caddy "$DESTINO"
 
 # Aviso a los buscadores que consumen IndexNow (Bing, Yandex, Seznam, Naver).
