@@ -88,3 +88,12 @@ chown -R root:caddy "$DESTINO"
 # de que ellos vengan a comprobarlo.
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/indexnow.py "$IA" "$DESTINO" || true
 chown -R root:caddy "$DESTINO"
+
+# El poller corre cada 15 min en los mismos minutos que los 4 turnos
+# (:00/:15/:30/:45), así que casi siempre pasa segundos ANTES de que el
+# turno termine de commitear y el evento se queda sin aparecer en el panel
+# hasta el ciclo siguiente (pasó de verdad con gemini y deepseek el
+# 2026-08-30). Se lanza aquí, justo al terminar, para que el marcador quede
+# al día sin depender de ese cruce de minutos. `|| true`: si falla, ya lo
+# recogerá el cron de */15 min normal, no debe tumbar el turno.
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/poller.py || true
