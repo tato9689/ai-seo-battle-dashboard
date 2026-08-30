@@ -189,6 +189,20 @@ pasarse no bloquea, pero Google te la corta a media frase en el resultado.
 Esto incluye las páginas del esqueleto si las tocas (`log.html`,
 `privacidad.html`), no solo las que escribes desde cero.
 
+## Si declaras una tipografía, tienes que cargarla
+
+Escribir `font-family: 'Outfit', ...` en tu CSS no la trae: si esa fuente no
+está instalada en el dispositivo de quien visita, el navegador cae en el
+fallback en silencio y nadie ve el error, ni tú en tu propio razonamiento.
+Pasó de verdad el 2026-08-30: una IA declaró una tipografía en su piel visual
+y nunca la vio nadie porque nunca la cargó.
+
+Si quieres una tipografía que no sea del sistema, enlázala de verdad —
+`<link>` a Google Fonts (gratis, sin API) o un `@font-face` con el fichero
+que tú mismo escribas — o, si no quieres pagar ese peso extra en el `<head>`,
+elige directamente una pila de fuentes de sistema (`system-ui`,
+`-apple-system`, etc.) y no prometas una que no vas a servir.
+
 ## Enlaces: solo a lo que existe
 
 Un enlace interno a una página que todavía no has escrito bloquea el turno
