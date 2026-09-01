@@ -220,7 +220,34 @@ def extraer_bloque_json(texto: str) -> dict | None:
     return None
 
 
+BLOQUE_ARCHIVO = re.compile(r"```archivo:([^\n`]+)\n(.*?)\n```", re.DOTALL)
+BLOQUE_NEWSLETTER_HTML = re.compile(r"```newsletter-html\n(.*?)\n```", re.DOTALL)
+
+
+def extraer_bloques_archivo(texto: str) -> dict[str, str]:
+    """El contenido de cada archivo vive en su propio bloque
+    ```archivo:ruta```, fuera del bloque ```json``` final. Antes
+    `contenido_completo` iba como string DENTRO del JSON, y una comilla o
+    un backslash sin escapar en medio de una tabla HTML o una cita
+    bastaba para reventar el bloque entero — pasó de verdad el
+    2026-09-01: Claude perdió un turno completo por una comilla suelta en
+    una cita de Prusa Forum, en un artículo que por lo demás estaba bien.
+    Con el HTML fuera del JSON, en texto plano, una comilla o un
+    backslash sueltos ya no rompen nada."""
+    return {ruta.strip(): contenido for ruta, contenido in BLOQUE_ARCHIVO.findall(texto)}
+
+
+def extraer_cuerpo_newsletter(texto: str) -> str | None:
+    """Mismo motivo que `extraer_bloques_archivo`: el cuerpo del correo es
+    HTML largo, así que vive en su propio bloque ```newsletter-html```,
+    no como string dentro del JSON."""
+    m = BLOQUE_NEWSLETTER_HTML.search(texto)
+    return m.group(1) if m else None
+
+
 def razonamiento_sin_json(texto: str) -> str:
+    texto = BLOQUE_ARCHIVO.sub("", texto)
+    texto = BLOQUE_NEWSLETTER_HTML.sub("", texto)
     return re.sub(r"```json.*?```", "", texto, flags=re.DOTALL).strip()
 
 
@@ -875,10 +902,11 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         # importa antes de un lanzamiento: ¿este turno se habría publicado?
         # Así que pasa por los mismos guardarraíles que el turno real.
         print("--dry-run: no se escribe ni commitea nada.")
+        bloques_archivo = extraer_bloques_archivo(texto)
         try:
             prueba = {
-                ruta_segura(repo_dir, a["ruta"]).relative_to(repo_dir).as_posix(): a["contenido_completo"]
-                for a in datos.get("archivos", [])
+                ruta_segura(repo_dir, r).relative_to(repo_dir).as_posix(): bloques_archivo[r]
+                for r in datos.get("archivos", [])
             }
         except (ValueError, KeyError) as e:
             print(f"[{ia}] salida no aplicable: {e}", file=sys.stderr)
@@ -892,9 +920,35 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             print(f"[{ia}] pasa los guardarraíles ({len(prueba)} archivos)")
         return
 
-    archivos = datos.get("archivos", [])
+    rutas = datos.get("archivos", [])
+    bloques_archivo = extraer_bloques_archivo(texto)
+    faltantes = [r for r in rutas if r not in bloques_archivo]
+    if faltantes:
+        # El JSON lista una ruta pero no hay bloque ```archivo:esa-ruta```
+        # que le corresponda — mismo tratamiento que un JSON sin parsear:
+        # se registra como error visible, no se aplica nada a medias.
+        print(f"[{ia}] archivos listados sin bloque ```archivo:``` correspondiente: {faltantes} — no se aplica nada.", file=sys.stderr)
+        registrar_evento(repo_dir, {
+            "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "modelo_exacto": resultado["modelo"],
+            "tipo_tarea": datos.get("tipo_tarea"),
+            "input_contexto": ctx,
+            "razonamiento": razonamiento,
+            "accion_tipo": datos.get("accion_tipo"),
+            "output_resumen": "el turno no se publicó: faltan bloques ```archivo:``` para rutas listadas en el JSON",
+            "output_url": None,
+            "tokens_in": resultado["tokens_in"],
+            "tokens_out": resultado["tokens_out"],
+            "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
+            "duracion_seg": resultado["duracion_seg"],
+            "resultado": "error",
+            "detalle_error": f"rutas sin bloque archivo: correspondiente: {faltantes}",
+        })
+        git_commit(repo_dir, "log: registra intento con archivos sin bloque correspondiente")
+        return
     try:
-        destinos = [(ruta_segura(repo_dir, a["ruta"]), a["contenido_completo"]) for a in archivos]
+        destinos = [(ruta_segura(repo_dir, r), bloques_archivo[r]) for r in rutas]
     except ValueError as e:
         print(f"[{ia}] {e} — no se aplica ningún cambio de este turno.", file=sys.stderr)
         return
@@ -953,8 +1007,9 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     envio = None
     avisos_nl: list[str] = []
     payload = datos.get("newsletter") or {}
-    if isinstance(payload, dict) and payload.get("cuerpo_html") and not dry_run:
-        bloq_nl, avisos_nl = guardarrailes.validar_newsletter(payload.get("cuerpo_html", ""))
+    cuerpo_html = extraer_cuerpo_newsletter(texto)
+    if isinstance(payload, dict) and cuerpo_html and not dry_run:
+        bloq_nl, avisos_nl = guardarrailes.validar_newsletter(cuerpo_html)
         for aviso in avisos_nl:
             print(f"[{ia}] aviso newsletter: {aviso}")
         if bloq_nl:
@@ -964,7 +1019,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             try:
                 envio = envio_newsletter.enviar(
                     _config_completa(), ia, _config_agente(ia).get("listmonk_list_id"),
-                    payload.get("asunto", ""), payload["cuerpo_html"],
+                    payload.get("asunto", ""), cuerpo_html,
                 )
             except Exception as e:
                 # Un fallo de envío no invalida el turno (la pieza ya está
