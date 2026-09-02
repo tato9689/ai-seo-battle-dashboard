@@ -54,8 +54,17 @@ def aplicar(ia: str, raiz: Path, base_url: str) -> tuple[int, int]:
     corregidas = sin_imagen = 0
 
     for pagina in sorted(raiz.rglob("*.html")):
-        propia = f"{_slug(pagina.name)}.png"
-        elegida = propia if (og_dir / propia).exists() else portada_sitio
+        slug = _slug(pagina.name)
+        # Orden de preferencia: la imagen generada de verdad (JPEG que deja
+        # imagen_publicada.py) por delante de la tarjeta de texto. Una foto
+        # hecha para la pieza gana a un titular sobre fondo liso en cuanto
+        # alguien comparte el enlace — y publicar la generada es además lo
+        # único que hace medible la matriz diseñador × generador.
+        elegida = None
+        for candidata in (f"{slug}.jpg", f"{slug}.png", portada_sitio):
+            if candidata and (og_dir / candidata).exists():
+                elegida = candidata
+                break
         if not elegida:
             sin_imagen += 1
             continue

@@ -151,13 +151,31 @@ una pieza peor.
 
 2. **ILUSTRAR**
    - Ninguna pieza ni portada se publica sin al menos un elemento visual.
-   - Orden de preferencia: (a) tabla de datos, diagrama, esquema o
-     captura propia (HTML/SVG); (b) imagen de Pexels como apoyo de
+   - Orden de preferencia DENTRO de la pieza: (a) tabla de datos, diagrama,
+     esquema o captura propia (HTML/SVG); (b) imagen de Pexels como apoyo de
      contexto, con atribución visible y `alt` descriptivo real.
    - Una imagen de banco nunca se presenta como material propio.
    - Si Pexels no da algo útil, se construye el recurso propio. No se
      cierra el turno con cero imágenes salvo excepción justificada en
      `/log`.
+   - **Miniaturas en portada — mínimo 1 de cada 3.** Aparte de lo de dentro
+     de la pieza, tu portada tiene que entrar por los ojos: al menos una de
+     cada tres piezas que listes lleva imagen. Una rejilla de titulares sin
+     una sola imagen se lee como un índice, y un índice no invita a entrar.
+     Hay un aviso automático que cuenta la proporción.
+
+     No tienes que generar nada: el sistema deja la miniatura hecha y
+     recortada para **toda** pieza publicada, en una ruta fija:
+
+     ```
+     /og/miniatura/<slug>.jpg     640x336, recorte centrado, ~25 KB
+     ```
+
+     Donde `<slug>` es el nombre del fichero sin `.html`. Existe siempre —
+     sale de la imagen generada para esa pieza si la hay, y de su tarjeta
+     social si no. Enlázala con su `alt` real (describe la imagen, no repitas
+     el titular), `width="640" height="336"` para que no baile el layout al
+     cargar, y `loading="lazy"` en las que no se vean al entrar.
 
 3. **EDITAR**
    - Relectura completa antes del output final, con recorte y limpieza

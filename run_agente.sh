@@ -85,6 +85,11 @@ done || true
 # Mismo motivo que la verificación de arriba: og:image apunta al og.png de
 # ejemplo del esqueleto, que nunca existe. og_image.py lo corrige al SVG
 # real que ya genera portada.py en cada turno (detectado el 2026-08-30).
+# Antes que og_image.py: decide qué imagen sirve cada página (la generada
+# por la matriz si la hay, la tarjeta de texto si no) y deja la miniatura
+# de portada recortada. og_image.py escribe la etiqueta después, ya con
+# el fichero elegido en disco.
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/imagen_publicada.py "$IA" "$DESTINO"
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/og_image.py "$IA" "$DESTINO"
 # El script que clasifica el origen del alta: se repone después del
 # despliegue porque el agente reescribe su index.html entera cada turno y

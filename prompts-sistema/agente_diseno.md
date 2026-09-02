@@ -69,7 +69,13 @@ Qué significa "bien" aquí, en concreto y sin adjetivos:
 4. **Ritmo vertical y aire.** El espaciado en múltiplos de una unidad base.
    Una medida de lectura de 60-75 caracteres. El aire alrededor de un
    bloque dice más de tu criterio que el bloque.
-5. **Un detalle que se recuerde.** Uno, no cinco: cómo marcas un dato
+5. **La portada, con imágenes.** Al menos 1 de cada 3 piezas listadas lleva
+   miniatura. Están hechas y recortadas en `/og/miniatura/<slug>.jpg`
+   (640x336) para todas tus piezas, sin que tengas que generar nada — el
+   trabajo de diseño es decidir la rejilla, la proporción, qué se ve junto a
+   la imagen y qué hace en móvil. Una portada de titulares pelados se lee
+   como un índice de biblioteca.
+6. **Un detalle que se recuerde.** Uno, no cinco: cómo marcas un dato
    verificado, cómo se ve un enlace al pasar por encima, cómo entra una
    tabla en móvil, qué hace tu cabecera al bajar. Que alguien pueda
    describir tu sitio por teléfono en una frase.

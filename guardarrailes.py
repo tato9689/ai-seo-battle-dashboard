@@ -792,6 +792,8 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     avisos += _piel_visual(repo_dir, archivos_nuevos)
     avisos += _diario_arriba(repo_dir, archivos_nuevos)
     avisos += _fuente_prometida_sin_servir(repo_dir, archivos_nuevos)
+    avisos += _identidad_visual(repo_dir, archivos_nuevos)
+    avisos += _miniaturas_en_portada(repo_dir, archivos_nuevos)
 
     return bloqueantes, avisos
 
@@ -809,3 +811,102 @@ def validar_newsletter(cuerpo_html: str) -> tuple[list[str], list[str]]:
     bloqueantes = _marcadores(como_pagina)
     b, avisos = _contenido(como_pagina)
     return bloqueantes + b, avisos
+
+
+# ── Identidad visual y miniaturas ───────────────────────────────────────────
+
+_RE_IMG = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_RE_SVG = re.compile(r"<svg\b", re.IGNORECASE)
+_RE_ENLACE_INTERNO = re.compile(r'href=["\'](/[^"\'#?]*|[^"\':/#?][^"\'#?]*)["\']', re.IGNORECASE)
+_NO_SON_PIEZAS = {"", "/", "index", "log", "privacidad", "rss.xml", "sitemap.xml", "favicon.svg"}
+
+
+def _identidad_visual(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: el sitio no tiene marca propia.
+
+    Pedido por Tato el 2026-09-02 después de preguntar por qué ninguna había
+    metido logo. La respuesta estaba en el prompt —el racionamiento de la
+    identidad se leía como prohibición de tenerla— y se corrigió allí, pero
+    una regla de prompt sin check es lo que en este proyecto ya se ha roto
+    cuatro veces. Esto no juzga si el logo es bueno: eso no lo puede mirar una
+    expresión regular. Comprueba que EXISTA, que es lo verificable.
+
+    Medido ese día: 3 de las 4 servían el favicon del esqueleto y 3 de las 4
+    no tenían ninguna marca en la cabecera, cuatro días después de arrancar.
+    """
+    avisos = []
+    esqueleto = Path(__file__).parent / "esqueleto-web" / "favicon.svg"
+    propio = repo_dir / "favicon.svg"
+    try:
+        if esqueleto.exists() and propio.exists() and \
+                propio.read_bytes() == esqueleto.read_bytes():
+            avisos.append(
+                "sigues sirviendo el favicon del esqueleto, el mismo cuadrito genérico "
+                "que las demás. Un favicon prestado en la pestaña dice «esto es una "
+                "demo» antes de que nadie lea una línea — dibuja el tuyo en SVG")
+    except OSError:
+        pass
+
+    index = archivos_nuevos.get("index.html")
+    if index is None and (repo_dir / "index.html").exists():
+        index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
+    if index:
+        index = _sin_comentarios(index)
+        cabeceras = "".join(_RE_HEADER.findall(index))
+        if cabeceras and not (_RE_SVG.search(cabeceras) or _RE_IMG.search(cabeceras)):
+            avisos.append(
+                "tu cabecera es solo el nombre del sitio en texto: no hay marca ni "
+                "monograma. Un trazo propio en SVG de menos de 2 KB, el mismo en la "
+                "cabecera y en /favicon.svg, es lo que hace que dos páginas tuyas se "
+                "reconozcan como del mismo sitio")
+    return avisos
+
+
+def _miniaturas_en_portada(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: la portada lista artículos y no enseña ninguna imagen.
+
+    Mínimo pedido por Tato el 2026-09-02: al menos 1 de cada 3 piezas listadas
+    en portada tiene que entrar por los ojos. No es capricho de estilo — una
+    rejilla de titulares sin una sola imagen se lee como un índice, y un
+    índice no invita a entrar en nada.
+
+    El sistema le deja el trabajo hecho: `imagen_publicada.py` escribe una
+    miniatura recortada de 640x336 en `og/miniatura/<slug>.jpg` para TODA
+    pieza publicada, salga de una imagen generada o de su tarjeta de texto.
+    Solo hay que enlazarla.
+
+    Aviso y no bloqueo, y a propósito: es una proporción sobre el sitio
+    entero, así que bloquear castigaría al turno que pasaba por ahí y no al
+    que causó el desajuste. Las imágenes de la cabecera no cuentan — un logo
+    no es una miniatura.
+    """
+    index = archivos_nuevos.get("index.html")
+    if index is None and (repo_dir / "index.html").exists():
+        index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
+    if not index:
+        return []
+    index = _sin_comentarios(index)
+    # Fuera la cabecera y el pie: ahí viven el logo y los enlaces de servicio.
+    cuerpo = _RE_HEADER.sub(" ", index)
+    cuerpo = re.sub(r"<footer\b[^>]*>.*?</footer>", " ", cuerpo, flags=re.IGNORECASE | re.DOTALL)
+
+    piezas = set()
+    for destino in _RE_ENLACE_INTERNO.findall(cuerpo):
+        limpio = destino.strip("/").removesuffix(".html")
+        if not limpio or limpio in _NO_SON_PIEZAS or limpio.startswith(("http", "mailto")):
+            continue
+        piezas.add(limpio)
+    if len(piezas) < 3:
+        # Con menos de tres piezas listadas la proporción no dice nada.
+        return []
+
+    imagenes = len(_RE_IMG.findall(cuerpo))
+    minimo = -(-len(piezas) // 3)  # techo de piezas/3
+    if imagenes >= minimo:
+        return []
+    return [f"tu portada lista {len(piezas)} piezas y solo enseña {imagenes} "
+            f"imagen{'es' if imagenes != 1 else ''}: hacen falta al menos {minimo} "
+            f"(1 de cada 3). Las miniaturas ya están hechas y recortadas, una por "
+            f"pieza, en /og/miniatura/<slug>.jpg — solo hay que enlazarlas con su "
+            f"alt real, width y height, y loading=\"lazy\" en las que no se vean al "
+            f"entrar"]

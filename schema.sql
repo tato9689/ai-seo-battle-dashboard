@@ -80,3 +80,57 @@ CREATE TABLE IF NOT EXISTS indexacion (
 );
 
 CREATE INDEX IF NOT EXISTS idx_indexacion_ia ON indexacion(ia);
+
+-- ── Matriz cruzada de imágenes ────────────────────────────────────────────
+-- El experimento dentro del experimento. La pregunta que nadie ha medido no
+-- es "qué IA genera mejores imágenes", sino "qué PAREJA funciona mejor":
+-- quien escribe el prompt de la imagen no tiene por qué ser quien la genera.
+-- Con 4 diseñadores y 2 generadores salen 8 combinaciones, y cada una se
+-- puede seguir hasta el CTR.
+--
+-- Corre sobre la og:image y no sobre las imágenes del cuerpo a propósito: las
+-- 4 IAs decidieron el 2026-08-30 no meter fotos en sus páginas (peso, LCP,
+-- ninguna señal de ranking) y esa decisión es suya y sigue siendo buena. La
+-- og:image no está en la página, no toca el peso ni el LCP, y sí decide si
+-- alguien hace clic cuando el enlace se comparte. Es el único sitio donde una
+-- imagen generada se paga sola.
+CREATE TABLE IF NOT EXISTS imagenes_matriz (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ia TEXT NOT NULL,                  -- de quién es el sitio donde acaba la imagen
+    url_articulo TEXT NOT NULL,        -- la pieza a la que acompaña
+    slug TEXT NOT NULL,
+    disenador TEXT NOT NULL,           -- qué modelo ESCRIBIÓ el prompt de la imagen
+    modelo_disenador TEXT,             -- el id exacto, para no perderlo cuando cambie de versión
+    generador TEXT NOT NULL,           -- openai | gemini — qué API la DIBUJÓ
+    modelo_generador TEXT,
+    prompt TEXT NOT NULL,              -- el prompt tal cual, que es la mitad del experimento
+    ruta_local TEXT,                   -- dónde quedó el fichero en el repo del agente
+    coste_prompt_usd REAL,             -- lo que costó pensarla
+    coste_imagen_usd REAL,             -- lo que costó dibujarla
+    seg_prompt REAL,
+    seg_imagen REAL,
+    bytes INTEGER,
+    -- Resultado, rellenado después por el poller cuando GSC tenga datos de
+    -- esa URL. Nulo al crear: una imagen recién hecha no tiene resultado, y
+    -- poner 0 aquí sería confundir "todavía no se sabe" con "no funcionó".
+    impresiones INTEGER,
+    clics INTEGER,
+    ctr REAL,
+    posicion REAL,
+    medido_el TEXT,
+    creado_el TEXT NOT NULL,
+    resultado TEXT,                    -- exito | error
+    detalle_error TEXT,
+    -- Cuál de las imágenes de este artículo es la que se sirve de verdad.
+    -- Sin esto la matriz no medía nada: se generaban dos imágenes por pieza
+    -- (una por generador), no se publicaba ninguna —la og:image seguía siendo
+    -- la tarjeta de texto— y las columnas de CTR no podían llenarse con nada
+    -- que significara algo. Una sola fila por (ia, slug) lleva publicada=1, y
+    -- el generador se alterna entre artículos para que ambos acumulen
+    -- impresiones sobre nichos distintos.
+    publicada INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(ia, slug, disenador, generador)
+);
+
+CREATE INDEX IF NOT EXISTS idx_matriz_pareja ON imagenes_matriz(disenador, generador);
+CREATE INDEX IF NOT EXISTS idx_matriz_ia ON imagenes_matriz(ia);
