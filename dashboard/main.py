@@ -296,8 +296,12 @@ ESTILO = """
   .p-imgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 14px 15px; }
   .p-img figcaption { font-size: .74rem; color: var(--text-2); margin-top: 6px; line-height: 1.4; }
   .p-img figcaption b { color: var(--text); }
-  .p-img img { border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
-               aspect-ratio: 1200 / 630; object-fit: cover; }
+  /* `contain` y no `cover`: aquí la imagen ES el dato que se compara, y
+     recortarla para que cuadre en la caja sería comparar dos recortes. */
+  .p-img { margin: 0; }
+  .p-img img { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630;
+               object-fit: contain; border-radius: 8px; border: 1px solid var(--border);
+               background: var(--surface); }
   .p-prompt { margin: 0; padding: 0 15px 14px; }
   .p-prompt summary { cursor: pointer; color: var(--s1); font-size: .78rem; }
   .p-prompt p { margin: 8px 0 0; font-size: .8rem; color: var(--text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
