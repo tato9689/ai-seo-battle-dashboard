@@ -49,25 +49,44 @@ def cargar_config() -> dict:
         return json.load(fh)
 
 
-def tope_mensual(cfg: dict, ia: str) -> float:
-    """Tope en euros. Se puede fijar por agente en config.json; si no, el
-    global; si tampoco, el acordado por defecto."""
+# Dos botes por agente y no uno solo. Con un único tope, el turno semanal de
+# diseño —que usa el modelo capaz y produce ficheros grandes— se come el
+# presupuesto de los turnos diarios de contenido, que son 7 veces más
+# frecuentes y son los que sostienen el corpus. Separarlos hace que un mes caro
+# de diseño no pueda dejar al agente sin escribir, ni al revés. El reparto es
+# 10 € contenido + 5 € diseño (2026-09-01).
+TOPE_DISENO_POR_DEFECTO = 5.0
+TIPO_DISENO = "diseno"
+
+
+def tope_mensual(cfg: dict, ia: str, tipo: str = "normal") -> float:
+    """Tope en euros del bote que toca. Se puede fijar por agente en
+    config.json; si no, el global; si tampoco, el acordado por defecto."""
+    clave = "tope_diseno_eur" if tipo == TIPO_DISENO else "tope_mensual_eur"
+    defecto = TOPE_DISENO_POR_DEFECTO if tipo == TIPO_DISENO else TOPE_POR_DEFECTO
     for agente in cfg.get("agentes", []):
-        if agente.get("ia") == ia and agente.get("tope_mensual_eur") is not None:
-            return float(agente["tope_mensual_eur"])
-    return float(cfg.get("tope_mensual_eur", TOPE_POR_DEFECTO))
+        if agente.get("ia") == ia and agente.get(clave) is not None:
+            return float(agente[clave])
+    return float(cfg.get(clave, defecto))
 
 
-def gasto_del_mes(ia: str, hoy: date | None = None) -> float:
-    """Gasto estimado del mes en curso, en euros."""
+def gasto_del_mes(ia: str, hoy: date | None = None, tipo: str = "normal") -> float:
+    """Gasto estimado del mes en curso, en euros, del bote que toca.
+
+    El reparto se hace por `tipo_tarea` del propio log: los turnos de diseño se
+    registran como "diseno" y todo lo demás cae en el bote de contenido. Las
+    filas sin `tipo_tarea` (turnos saltados, errores tempranos) cuentan como
+    contenido, que es donde estaban antes de existir esta separación."""
     hoy = hoy or date.today()
     prefijo = hoy.strftime("%Y-%m")
+    filtro = ("AND tipo_tarea = ?" if tipo == TIPO_DISENO
+              else "AND (tipo_tarea IS NULL OR tipo_tarea != ?)")
     try:
         conn = get_conn()
         fila = conn.execute(
             "SELECT SUM(coste_estimado) total FROM activity_log"
-            " WHERE ia = ? AND substr(timestamp, 1, 7) = ?",
-            (ia, prefijo),
+            f" WHERE ia = ? AND substr(timestamp, 1, 7) = ? {filtro}",
+            (ia, prefijo, TIPO_DISENO),
         ).fetchone()
         conn.close()
     except sqlite3.Error as e:
@@ -79,11 +98,12 @@ def gasto_del_mes(ia: str, hoy: date | None = None) -> float:
     return (fila["total"] or 0.0) / USD_POR_EUR
 
 
-def estado(ia: str, cfg: dict | None = None, hoy: date | None = None) -> dict:
-    """{gastado, tope, fraccion, permitir, degradar, motivo}."""
+def estado(ia: str, cfg: dict | None = None, hoy: date | None = None,
+           tipo: str = "normal") -> dict:
+    """{gastado, tope, fraccion, permitir, degradar, motivo} del bote que toca."""
     cfg = cfg or cargar_config()
-    tope = tope_mensual(cfg, ia)
-    gastado = gasto_del_mes(ia, hoy)
+    tope = tope_mensual(cfg, ia, tipo)
+    gastado = gasto_del_mes(ia, hoy, tipo)
     fraccion = (gastado / tope) if tope > 0 else 0.0
 
     if fraccion >= 1.0:

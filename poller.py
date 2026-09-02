@@ -10,6 +10,10 @@ from pathlib import Path
 
 import httpx
 
+from entorno import cargar_env
+
+cargar_env()
+
 from avisos import enviar as avisar_telegram
 from db import get_conn, init_db
 

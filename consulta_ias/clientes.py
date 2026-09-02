@@ -13,7 +13,11 @@ import time
 
 import httpx
 
-TIMEOUT = 300
+# 900 y no 300: desde que los encargos del consejo dejaron de llevar límite
+# de extensión, una respuesta larga de un modelo que razona antes de escribir
+# se pasa de 5 minutos y muere por timeout de red — pasó con Claude el
+# 2026-09-01 en el encargo del agente de diseño, con las otras 3 ya pagadas.
+TIMEOUT = 900
 
 # Precios (entrada, salida) en USD por millón de tokens, CONTRASTADOS con la
 # documentación oficial de los 4 proveedores el 2026-08-29. Vive aquí (y no

@@ -17,6 +17,10 @@ from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 
 import httpx
+
+from entorno import cargar_env
+
+cargar_env()
 from google.oauth2 import service_account
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import RunReportRequest, DateRange, Metric
@@ -63,6 +67,53 @@ def datos_ga4(creds, property_id: str) -> dict:
         "usuarios": int(fila.metric_values[1].value) if fila else 0,
         "vistas": int(fila.metric_values[2].value) if fila else 0,
     }
+
+
+def consultas_gsc(creds, site_url: str, dias: int = 28, tope: int = 25) -> list[dict]:
+    """Las búsquedas por las que ya te ven, una por fila.
+
+    `datos_gsc` devuelve el agregado del sitio —tres números— y con eso no se
+    puede decidir nada: dice CUÁNTO, nunca QUÉ. Esto devuelve la dimensión
+    `query`, que es de donde salen los temas demostrados: una consulta con
+    impresiones y posición 4-25 es algo que Google ya asocia con este sitio,
+    que alguien busca de verdad, y para lo que todavía no hay una página que
+    lo responda bien. Eso no se puede inventar desde el escritorio.
+
+    Ventana de 28 días y no 2: en un sitio nuevo las búsquedas de un día son
+    ruido, y la señal solo aparece acumulando. GSC consolida con 3 días de
+    retraso, así que la ventana termina ahí.
+
+    Nunca lanza: si GSC falla o el sitio aún no tiene datos, lista vacía. Es
+    contexto, no una dependencia del turno."""
+    try:
+        service = build("searchconsole", "v1", credentials=creds)
+        fin = date.today() - timedelta(days=3)
+        inicio = fin - timedelta(days=dias)
+        resp = service.searchanalytics().query(
+            siteUrl=site_url,
+            body={
+                "startDate": inicio.isoformat(),
+                "endDate": fin.isoformat(),
+                "dimensions": ["query"],
+                "rowLimit": tope,
+                "dataState": "final",
+            },
+        ).execute()
+    except Exception as e:
+        print(f"consultas GSC no disponibles para {site_url}: {e}", file=sys.stderr)
+        return []
+    filas = []
+    for r in resp.get("rows", []):
+        claves = r.get("keys") or [""]
+        filas.append({
+            "consulta": claves[0],
+            "clics": int(r.get("clicks", 0)),
+            "impresiones": int(r.get("impressions", 0)),
+            "ctr": round(r.get("ctr", 0) * 100, 2),
+            "posicion": round(r.get("position", 0), 1),
+        })
+    filas.sort(key=lambda f: f["impresiones"], reverse=True)
+    return filas
 
 
 def datos_gsc(creds, site_url: str) -> dict:
@@ -138,15 +189,56 @@ def datos_listmonk(base_url: str, token: str, list_id) -> dict:
     resp.raise_for_status()
     data = resp.json()["data"]
 
+    confirmados = _confirmados(base_url, token, list_id)
     salida = {
-        "suscriptores_totales": data.get("subscriber_count"),
+        # Se cuenta explícitamente con `subscription_status=confirmed` y no con
+        # el `subscriber_count` de la lista: ese valor lo cachea Listmonk y su
+        # criterio con el doble opt-in no está garantizado entre versiones. La
+        # métrica que decide el experimento no puede depender de una caché
+        # ajena, y un suscriptor sin confirmar NO cuenta: no ha dado su
+        # consentimiento todavía.
+        "suscriptores_totales": confirmados,
         # netos_dia lo calcula poll_ia contra el snapshot del día anterior:
         # Listmonk da el total vivo, no la variación.
         "suscriptores_netos_dia": None,
         "tasa_apertura_ultimo_envio": _tasa_apertura(base_url, token, list_id),
+        # Todo suscriptor confirmado es orgánico POR REGLA del experimento: el
+        # tráfico de pago está prohibido y el filtro bloquea los incentivos por
+        # registro. Antes esto se leía de `attribs.origen`, que el formulario
+        # público de Listmonk IGNORA a propósito —probado el 2026-09-01 con
+        # tres nombres de campo distintos, los tres devuelven attribs vacío—
+        # así que esa columna habría dado 0 para siempre, y es la que decide
+        # quién gana. Un cero que parece «todavía no ha entrado nadie» es el
+        # peor sitio donde tener un fallo.
+        "suscriptores_organicos": confirmados,
+        # `None` y no `0`: no se distingue el origen, y eso no es lo mismo que
+        # haber medido cero. Si algún día hace falta el desglose de verdad,
+        # hay que poner un endpoint propio delante del formulario que fije
+        # `origen` desde el servidor y llame a la API — el formulario público
+        # nunca va a poder hacerlo.
+        "suscriptores_meta": None,
+        "suscriptores_directos": None,
     }
-    salida.update(_desglose_origen(base_url, token, list_id))
     return salida
+
+
+def _confirmados(base_url: str, token: str, list_id) -> int:
+    """Suscriptores confirmados y activos de una lista. 0 si algo falla: es un
+    contador, y devolver None aquí haría que el dashboard pintara un hueco
+    donde debería haber un número."""
+    try:
+        resp = httpx.get(
+            f"{base_url}/subscribers",
+            params={"list_id": list_id, "subscription_status": "confirmed",
+                    "query": "subscribers.status='enabled'", "per_page": 1},
+            headers={"Authorization": f"token {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return int(resp.json()["data"]["total"])
+    except Exception as e:
+        print(f"no se pudo contar confirmados de la lista {list_id}: {e}", file=sys.stderr)
+        return 0
 
 
 def _tasa_apertura(base_url: str, token: str, list_id) -> float | None:
@@ -176,43 +268,13 @@ def _tasa_apertura(base_url: str, token: str, list_id) -> float | None:
         return None
 
 
-def _desglose_origen(base_url: str, token: str, list_id) -> dict:
-    """Cuenta suscriptores confirmados por origen del alta.
-
-    El leaderboard solo puntúa los orgánicos: el experimento se promociona por
-    su propia narrativa y ese tráfico de curiosidad no mide quién hace mejor
-    SEO. El origen lo graba el formulario en el atributo `origen` (ver
-    esqueleto-web/index.html) — aquí solo se cuenta, no se infiere nada.
-
-    Se consulta con el query SQL de Listmonk sobre `subscribers.attribs`, un
-    COUNT por categoría, sin descargar la lista de emails: no hace falta
-    tocar datos personales para tener el número.
-    """
-    conteos = {}
-    for etiqueta in ("organico", "meta", "directo"):
-        try:
-            resp = httpx.get(
-                f"{base_url}/subscribers",
-                params={
-                    "list_id": list_id,
-                    "query": f"subscribers.attribs->>'origen' = '{etiqueta}' "
-                             f"AND subscribers.status = 'enabled'",
-                    "per_page": 1,  # solo interesa el total que devuelve la respuesta
-                },
-                headers={"Authorization": f"token {token}"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            conteos[etiqueta] = resp.json()["data"].get("total")
-        except Exception as e:
-            print(f"desglose de origen '{etiqueta}' no disponible: {e}", file=sys.stderr)
-            conteos[etiqueta] = None
-    return {
-        "suscriptores_organicos": conteos["organico"],
-        "suscriptores_meta": conteos["meta"],
-        "suscriptores_directos": conteos["directo"],
-    }
-
+# `_desglose_origen` se retiró el 2026-09-01. Consultaba
+# `subscribers.attribs->>'origen'`, un atributo que el formulario público de
+# Listmonk nunca llega a guardar: ignora cualquier campo de atributos que le
+# mandes (probado con attribs_origen, attribs y attribs[origen]). La función
+# devolvía siempre ceros y alimentaba la métrica que decide el experimento.
+# Si vuelve a hacer falta el desglose, no se resucita esto: hace falta un
+# endpoint propio delante del formulario que fije el origen desde el servidor.
 
 def poll_ia(conn, cfg, agente: dict) -> bool:
     ia = agente["ia"]
@@ -228,6 +290,12 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
     fuentes_ok = []
 
     try:
+        # GA4 sin propiedad no es un fallo, es una decisión pendiente: hoy
+        # ningún subdominio lleva la etiqueta y `ga4_property` está a null en
+        # los 4. Sin este corte, cada ejecución escupía 4 trazas de error 400
+        # idénticas y el log de un proceso sano parecía el de uno roto.
+        if not agente.get("ga4_property"):
+            raise RuntimeError("sin ga4_property en config.json (GA4 no montado todavía)")
         creds = credenciales(cfg["google_service_account"])
         ga4 = datos_ga4(creds, agente["ga4_property"])
         fila.update(sesiones_ga4=ga4["sesiones"], usuarios_ga4=ga4["usuarios"], vistas_ga4=ga4["vistas"])
@@ -311,9 +379,17 @@ def poll_ia(conn, cfg, agente: dict) -> bool:
 
 
 def main():
-    # Aviso de control por Telegram (pedido por Tato, mismo patrón que
-    # run_agente.sh): lanzamiento al principio, éxito o fallo al final.
-    _avisar("🚀 AI SEO Battle: arranca poller de métricas diario")
+    # Este proceso avisaba dos veces por ejecución —"arranca" y "terminado"—
+    # y eso son ~730 mensajes al año de un trabajo que casi siempre sale bien.
+    # Un canal donde la mayoría de los mensajes no piden nada es un canal que
+    # se deja de leer, y entonces el que sí importa (una fuente caída, el
+    # primer suscriptor) se pierde entre los que no. Ahora habla solo cuando
+    # hay algo que decir: fallo, o alguna IA sin ninguna fuente. Todo bien es
+    # silencio, y el resumen sigue en el log y en stdout.
+    silencioso = "--silencioso" in sys.argv
+    def avisar(texto):
+        if not silencioso:
+            _avisar(texto)
     try:
         init_db()
         cfg = cargar_config()
@@ -322,11 +398,14 @@ def main():
         conn.commit()
         conn.close()
     except Exception as e:
-        _avisar(f"🔴 AI SEO Battle: poller de métricas FALLÓ — {e}")
+        avisar(f"🔴 AI SEO Battle: poller de métricas FALLÓ — {e}")
         raise
-    resumen = f"metrics snapshot: {ok}/{len(cfg['agentes'])} IAs con al menos una fuente"
+    total = len(cfg["agentes"])
+    resumen = f"metrics snapshot: {ok}/{total} IAs con al menos una fuente"
     print(resumen)
-    _avisar(f"✅ AI SEO Battle: poller de métricas terminado — {resumen}")
+    if ok < total:
+        avisar(f"⚠️ AI SEO Battle: {total - ok} de {total} IAs se han quedado hoy "
+               f"sin ninguna fuente de métricas — {resumen}")
 
 
 if __name__ == "__main__":
