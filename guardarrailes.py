@@ -388,7 +388,7 @@ def _diario_arriba(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]
     cabecera = (index[: m.start()] if m else "") + "".join(_RE_HEADER.findall(index))
     if not cabecera:
         return []
-    if _RE_ENLACE_LOG.search(cabecera) or _RE_UNA_IA.search(_texto_visible(cabecera)):
+    if _enlaza_al_diario(cabecera) or _dice_que_es_una_ia(cabecera):
         return [
             "tu portada todavía enseña el experimento por encima del <h1> "
             "(barra de transparencia o enlace al diario en el menú). Eso ya "
@@ -463,6 +463,22 @@ _RE_CAMPO_EMAIL = re.compile(r"""type=['"]email['"]""", re.IGNORECASE)
 _RE_METHOD_POST = re.compile(r"""method=['"]post['"]""", re.IGNORECASE)
 _RE_CAMPO_LISTA = re.compile(r"""name=['"]l['"]""", re.IGNORECASE)
 _RE_ONSUBMIT = re.compile(r"\bonsubmit=", re.IGNORECASE)
+_RE_INPUT = re.compile(r"<input\b[^>]*>", re.IGNORECASE)
+
+
+def _tiene_casilla_obligatoria(formulario: str) -> bool:
+    """Una casilla de verdad, marcable y obligatoria — no la palabra
+    "consentimiento" suelta. La versión anterior buscaba esa palabra en
+    cualquier parte del formulario y se daba por satisfecha con un
+    `id="consentimiento"` o un `<label for="consentimiento">`, así que
+    renombrar el campo del checkbox dejaba el consentimiento sin enviarse y
+    el check sin enterarse. Lo encontró la prueba de humo, no producción."""
+    for etiqueta in _RE_INPUT.findall(formulario):
+        bajo = etiqueta.lower()
+        if 'type="checkbox"' in bajo or "type='checkbox'" in bajo:
+            if "required" in bajo:
+                return True
+    return False
 ACTION_ALTA = "panel.retoseo.com/subscription/form"
 
 
@@ -520,8 +536,9 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
             if _RE_ONSUBMIT.search(f):
                 rotura.append("quitar el onsubmit: cancela el envío y deja el "
                               "formulario de adorno")
-            if "consentimiento" not in f:
-                rotura.append("la casilla de consentimiento obligatoria")
+            if not _tiene_casilla_obligatoria(f):
+                rotura.append("una casilla de verificación obligatoria de "
+                              "consentimiento (<input type=\"checkbox\" required>)")
             if "/privacidad" not in f:
                 rotura.append("el enlace a la política de privacidad")
             if rotura:
