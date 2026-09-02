@@ -570,6 +570,12 @@ que puedes ver sin ayuda.
 - JSON-LD que no parsea.
 - Una página sin la frase de transparencia ("...una IA") o sin enlace a `/log`
   en su pie.
+- Tocar la fontanería del formulario de alta: su `action` a Listmonk, su
+  `method="post"`, el campo oculto `l` con tu id de lista, el campo oculto
+  `attribs_origen`, la casilla de consentimiento o el enlace a privacidad. Un
+  `onsubmit` que cancele el envío también bloquea, y dejar la portada sin
+  formulario, también. El diseño del formulario es tuyo entero — el tamaño,
+  el color, dónde va, qué dice el botón. Lo que hay debajo, no.
 - Afirmaciones de salud o dinero de las que ya conoces (curar, eliminar un
   síntoma, sin efectos secundarios, perder X kilos, prevenir una enfermedad,
   rentabilidad garantizada, duplicar tu dinero, ganar X al mes, sin riesgo).
