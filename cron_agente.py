@@ -62,10 +62,24 @@ PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 # puede importar de aquí sin crear un ciclo (aquí ya se importa de clientes).
 
 
-def cargar_prompt_sistema(ia: str) -> str:
+def cargar_prompt_sistema(ia: str, diseno: bool = False) -> str:
+    """base + personalidad, y en el turno semanal de diseño un tercer bloque.
+
+    `diseno_<ia>.md` lo escribió cada agente para sí misma en el consejo del
+    2026-09-01, con los diagramas y las convenciones reales de su nicho — por
+    eso hay uno por IA y no uno común: un brief compartido tendría que hablar
+    en genérico para no revelar los nichos entre ellas, y en genérico se
+    pierde justo lo que hace que un sitio parezca hecho por alguien de dentro.
+    Va DESPUÉS de la personalidad: es la tarea, no la identidad."""
     base = (PROMPTS_DIR / "base_comun.md").read_text(encoding="utf-8")
     personalidad = (PROMPTS_DIR / f"personalidad_{ia}.md").read_text(encoding="utf-8")
-    return base + "\n\n" + personalidad
+    bloques = [base, personalidad]
+    if diseno:
+        ruta = PROMPTS_DIR / f"diseno_{ia}.md"
+        if not ruta.exists():
+            raise SystemExit(f"falta {ruta}: el turno de diseño de {ia} no tiene prompt")
+        bloques.append(ruta.read_text(encoding="utf-8"))
+    return "\n\n".join(bloques)
 
 
 def contexto_metricas(ia: str) -> dict:
@@ -292,12 +306,116 @@ def registrar_urls_publicadas(ia: str, base_url: str, archivos_nuevos: dict):
 ALIAS_TIER = {"barato": "diaria", "potente": "semanal"}
 
 
-def tier_elegido(repo_dir: Path, por_defecto: str) -> str:
+def contexto_consultas_gsc(ia: str) -> dict:
+    """Las búsquedas reales por las que ya aparece este sitio.
+
+    Va aparte de `contexto_metricas` a propósito: aquello lee el snapshot
+    diario de la base (tres números agregados) y esto pregunta a GSC en vivo
+    por la dimensión `query`. Son cosas distintas — el snapshot dice cómo va,
+    esto dice DE QUÉ va. Sin la segunda, el agente decide qué escribir por
+    intuición teniendo delante la respuesta demostrada.
+
+    Es contexto y no una dependencia: cualquier fallo devuelve {} y el turno
+    sigue. La llamada a GSC no cuesta dinero."""
+    try:
+        cfg = _config_completa()
+        ruta = cfg.get("google_service_account")
+        site = (_config_agente(ia) or {}).get("gsc_site")
+        if not ruta or not site or not Path(ruta).exists():
+            return {}
+        import poller_metrics
+        creds = poller_metrics.credenciales(ruta)
+        filas = poller_metrics.consultas_gsc(creds, site)
+    except Exception as e:
+        print(f"[{ia}] consultas GSC no disponibles: {e}", file=sys.stderr)
+        return {}
+    if not filas:
+        return {}
+    # 4-25 es la franja donde un cambio mueve la aguja: por encima de 4 ya
+    # estás arriba y ganas poco; por debajo de 25 nadie te ve y el trabajo es
+    # otro (crear autoridad, no retocar). Es el filtro que ya usa el pipeline
+    # de contenido de GranVía y viene de resultados, no de teoría.
+    oportunidades = [f for f in filas if 4.0 <= f["posicion"] <= 25.0 and f["impresiones"] >= 10]
+    return {
+        "que_es": ("busquedas reales por las que Google ya te muestra, ultimos 28 dias. "
+                   "Una consulta con impresiones y posicion 4-25 es un tema DEMOSTRADO: "
+                   "hay gente buscandolo, Google ya te asocia con ello y todavia no "
+                   "tienes la pagina que lo responde bien."),
+        "top_por_impresiones": filas[:15],
+        "oportunidades_posicion_4_25": oportunidades[:10],
+    }
+
+
+def parte_mecanico(repo_dir: Path) -> dict:
+    """El estado real del sitio tal y como lo ve el filtro, calculado sobre el
+    repo entero ANTES de que el agente decida nada.
+
+    En el consejo del 2026-09-01 las 4 pidieron partir el turno: un trabajo
+    barato que lee y audita, y uno capaz que decide y redacta. La condición
+    que pusieron para que el reparto compense era que el barato entregara
+    "hechos mecánicos, cero juicio" y que a cambio el capaz no volviera a
+    recorrer el repo.
+
+    Resulta que para esos hechos no hace falta ningún modelo: son exactamente
+    lo que `guardarrailes.validar` ya calcula, y calcularlos en Python cuesta
+    cero y no alucina. Además es la MISMA función que decide si el turno se
+    bloquea, así que el parte no es una aproximación de las reglas: son las
+    reglas.
+
+    Se pasa el repo entero como `archivos_nuevos` a propósito — así el
+    validador audita lo que ya está publicado, no solo lo que cambia hoy."""
+    actuales = {}
+    for ruta in repo_dir.rglob("*"):
+        if not ruta.is_file() or ".git" in ruta.parts:
+            continue
+        rel = ruta.relative_to(repo_dir).as_posix()
+        if rel in guardarrailes.GENERADOS_POR_EL_SISTEMA:
+            continue
+        if ruta.suffix.lower() not in (".html", ".css", ".svg", ".xml", ".json", ".txt", ".md"):
+            continue
+        try:
+            actuales[rel] = ruta.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+    try:
+        bloqueantes, avisos = guardarrailes.validar(repo_dir, actuales)
+    except Exception as e:  # nunca tumbar el turno por el parte
+        print(f"[parte mecánico] no se pudo calcular: {e}", file=sys.stderr)
+        return {}
+    return {
+        "que_es": ("estado del sitio publicado segun el mismo filtro que juzga tu turno, "
+                   "calculado antes de que decidas. Son hechos, no opiniones: no hay "
+                   "criterio de nadie aqui dentro."),
+        "problemas_que_bloquearian": bloqueantes,
+        "avisos_pendientes": avisos,
+        "paginas_html": sum(1 for r in actuales if r.endswith(".html")),
+    }
+
+
+def tier_elegido(repo_dir: Path, por_defecto: str, solo_tipo: str | None = None) -> str:
     """Qué modelo pidió el agente para este turno en su turno anterior.
 
     Se lee del log real y no de un fichero de estado aparte, para que la
     elección quede publicada junto al razonamiento que la justificó: forma
-    parte de lo que se enseña, no de la fontanería."""
+    parte de lo que se enseña, no de la fontanería.
+
+    `solo_tipo` limita la búsqueda a turnos de ese `tipo_tarea`. Hace falta
+    para el turno de diseño, y el 2026-09-02 se vio por qué: el turno de
+    diseño de Claude se ejecutó con Haiku —el modelo barato— y falló al
+    emitir los ficheros. No lo había elegido para diseñar: había pedido
+    "barato" en su turno de CONTENIDO del día anterior, que es una decisión
+    razonable para escribir un artículo y pésima para rehacer la piel de un
+    sitio entero. El agente no estaba eligiendo mal; el sistema no le daba
+    forma de elegir distinto según el tipo de turno, y se llevaba la última
+    respuesta que encontrara.
+
+    Es justo lo que separa los dos botes de presupuesto (10 € contenido,
+    5 € diseño): si el bote es aparte porque el turno de diseño necesita un
+    modelo capaz, heredar el "barato" de un turno de contenido vacía el
+    motivo de haberlos separado. Esto no le quita la decisión al agente, se
+    la devuelve por tipo de turno: si pide "barato" DENTRO de un turno de
+    diseño, se respeta.
+    """
     log_path = repo_dir / "log.json"
     if not log_path.exists():
         return por_defecto
@@ -309,6 +427,8 @@ def tier_elegido(repo_dir: Path, por_defecto: str) -> str:
         return por_defecto
     for ev in eventos:  # el más reciente primero
         if not isinstance(ev, dict):
+            continue
+        if solo_tipo and ev.get("tipo_tarea") != solo_tipo:
             continue
         elegido = ev.get("modelo_siguiente")
         if isinstance(elegido, str) and elegido.lower() in ALIAS_TIER:
@@ -678,7 +798,7 @@ def base_url_agente(ia: str) -> str:
     return log_url[: -len("/log.json")] if log_url.endswith("/log.json") else ""
 
 
-def ejecutar(ia: str, newsletter: bool, dry_run: bool):
+def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
     # Crea las tablas si faltan (idempotente): el cron del agente puede correr
     # antes que el del poller el primer día, y todo lo que registra después
     # —indexación, presupuesto— necesita que el esquema exista.
@@ -696,9 +816,27 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         print(f"No existe {repo_dir} — crea el repo del agente primero.", file=sys.stderr)
         sys.exit(1)
 
-    system = cargar_prompt_sistema(ia)
+    system = cargar_prompt_sistema(ia, diseno=diseno)
     ctx = contexto_metricas(ia)
-    tarea = "la newsletter semanal" if newsletter else "tu tarea diaria habitual"
+    if diseno:
+        # Explícito y no solo "turno de diseño": la sección de cadencia de
+        # contenido de `base_comun.md` sigue delante en el prompt y empuja a
+        # publicar una pieza. En el primer ensayo en seco (gemini, 2026-09-01)
+        # eso ganó a su propio prompt de diseño: montó su piel.css Y escribió
+        # además un artículo, con accion_tipo "crear-articulo". La cuota no se
+        # suspende, la cubren los turnos diarios; lo que no toca es hoy.
+        tarea = (
+            "tu turno semanal de DISEÑO. Hoy NO escribes ninguna pieza de "
+            "contenido: la cadencia mínima de contenido no aplica a este turno "
+            "y tu cuota la cubren tus turnos diarios. Si acabas antes de tiempo, "
+            "resuelve mejor la pieza de diseño que has elegido en vez de añadir "
+            "un artículo. El `accion_tipo` de hoy no puede ser crear-articulo "
+            "ni actualizar-articulo"
+        )
+    elif newsletter:
+        tarea = "la newsletter semanal"
+    else:
+        tarea = "tu tarea diaria habitual"
 
     # Turno semanal con la lista vacía: no se hace. Es el único turno que usa
     # el modelo flagship y el presupuesto tiene que llegar a 10 meses, así que
@@ -794,7 +932,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     # Freno de gasto ANTES de llamar. El límite de la consola del proveedor es
     # la red final, pero salta de golpe y deja al agente mudo sin explicación;
     # esto degrada primero y solo para del todo al llegar al tope.
-    presu = presupuesto.estado(ia)
+    presu = presupuesto.estado(ia, tipo=presupuesto.TIPO_DISENO if diseno else "normal")
     if not presu["permitir"]:
         print(f"[{ia}] sin llamada: {presu['motivo']}")
         registrar_evento(repo_dir, {
@@ -813,7 +951,12 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     # presupuesto es parte de lo que se está midiendo, no una decisión del
     # sistema. El tiering por tarea queda solo como valor de partida el primer
     # día, cuando todavía no ha elegido nada.
-    tier = tier_elegido(repo_dir, por_defecto="semanal" if newsletter else "diaria")
+    # El de diseño arranca en "semanal" igual que la newsletter: es un turno
+    # que se da una vez por semana y produce componentes que reutilizan todos
+    # los turnos diarios siguientes, así que es de los pocos sitios donde el
+    # modelo capaz se amortiza. A partir del segundo, manda su propia elección.
+    tier = tier_elegido(repo_dir, por_defecto="diaria" if not (newsletter or diseno) else "semanal",
+                        solo_tipo="diseno" if diseno else None)
     if presu["degradar"] and tier == "semanal":
         # Único caso en que el sistema le pisa la elección: cerca del tope,
         # una newsletter con el modelo pequeño es mejor que quedarse sin turnos.
@@ -826,6 +969,21 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     # mismo — pasó de verdad el 2026-08-30, un turno razonó "voy a usar el
     # modelo potente" y en realidad corrió con el barato, sin que nada se lo
     # dijera.
+    consultas_reales = contexto_consultas_gsc(ia)
+    bloque_consultas = (
+        "Tus búsquedas reales en Search Console:\n"
+        f"{json.dumps(consultas_reales, ensure_ascii=False, indent=2)}\n\n"
+        if consultas_reales else ""
+    )
+
+    parte = parte_mecanico(repo_dir)
+    bloque_parte = (
+        "Parte mecánico del sitio, calculado por el mismo filtro que juzga tu "
+        "turno (no lo ha escrito ningún modelo, no hay criterio de nadie "
+        f"dentro):\n{json.dumps(parte, ensure_ascii=False, indent=2)}\n\n"
+        if parte else ""
+    )
+
     aviso_tier = (
         f"Este turno de HOY ya se está ejecutando con el modelo "
         f"'{MODELOS.get(ia, {}).get(tier)}' (tier '{tier}'). Eso no lo eliges "
@@ -846,6 +1004,8 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         f"{bloque_imagenes}"
         f"{bloque_feeds}"
         f"{bloque_dataforseo}"
+        f"{bloque_consultas}"
+        f"{bloque_parte}"
         f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
     )
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
@@ -932,7 +1092,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelo_exacto": resultado["modelo"],
-            "tipo_tarea": datos.get("tipo_tarea"),
+            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
             "input_contexto": ctx,
             "razonamiento": razonamiento,
             "accion_tipo": datos.get("accion_tipo"),
@@ -967,7 +1127,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
             "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelo_exacto": resultado["modelo"],
-            "tipo_tarea": datos.get("tipo_tarea"),
+            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
             "input_contexto": ctx,
             "razonamiento": razonamiento,
             "accion_tipo": datos.get("accion_tipo"),
@@ -1042,7 +1202,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
         "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "modelo_exacto": resultado["modelo"],
-        "tipo_tarea": datos.get("tipo_tarea"),
+        "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
         "input_contexto": ctx,
         "razonamiento": razonamiento,
         "accion_tipo": datos.get("accion_tipo"),
@@ -1091,9 +1251,88 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool):
     git_push(repo_dir)
     print(f"[{ia}] commit {commit_hash}, evento registrado en log.json")
 
+    _lanzar_matriz_imagenes(ia, datos, archivos_nuevos, dry_run)
+
+
+# De qué bote de presupuesto sale cada acción, cuando el modelo no declara el
+# tipo. Sin esto, 8 de los primeros turnos quedaron con `tipo_tarea` a null y
+# eran ingasto sin atribuir: no aparecían en el informe por tipo de trabajo y
+# el reparto entre botes los metía todos en contenido por descarte, no por
+# saberlo.
+TIPO_POR_ACCION = {
+    "crear-articulo": "redaccion-articulo",
+    "actualizar-articulo": "redaccion-articulo",
+    "podar-articulo": "redaccion-articulo",
+    "cambiar-meta": "seo-onpage",
+    "cambiar-titular": "seo-onpage",
+    "modificar-enlazado-interno": "seo-onpage",
+    "modificar-cta": "seo-onpage",
+    "atacar-keyword": "cambio-estrategia",
+    "abandonar-keyword": "cambio-estrategia",
+    "cambiar-cluster-tematico": "cambio-estrategia",
+    "enviar-newsletter": "contenido-newsletter",
+}
+
+
+def tipo_tarea_de(datos: dict, newsletter: bool, diseno: bool) -> str:
+    """El tipo con el que se registra el turno, y por tanto de qué bote sale.
+
+    En el turno de diseño se FUERZA a "diseno" aunque el modelo declare otra
+    cosa: de ese valor depende que el gasto vaya al bote de 5 € en vez de
+    comerse el de contenido, y eso no puede quedar a merced de lo que el
+    modelo escriba en su JSON. Es contabilidad, no una opinión suya.
+
+    En los demás se respeta lo que declare, y solo si no declara nada se
+    deduce del `accion_tipo`, que sí suele venir."""
+    if diseno:
+        return "diseno"
+    declarado = (datos.get("tipo_tarea") or "").strip()
+    if declarado:
+        return declarado
+    if newsletter:
+        return "contenido-newsletter"
+    return TIPO_POR_ACCION.get(datos.get("accion_tipo"), "otro")
+
+
+def _lanzar_matriz_imagenes(ia: str, datos: dict, archivos_nuevos: dict, dry_run: bool):
+    """Ronda de la matriz cruzada para el artículo que se acaba de publicar.
+
+    Va DESPUÉS del push y con todo dentro de un try: la matriz es un
+    experimento paralelo y no puede tener ninguna forma de estropear la
+    publicación, que es el trabajo de verdad. Si falla, se anota y ya.
+
+    Solo para artículos NUEVOS: una mejora reescribe una página que ya tiene su
+    og:image y su historial de CTR en la matriz, y generarle otra rompería la
+    comparación —dejaría de saberse a cuál de las dos corresponden las
+    impresiones acumuladas.
+
+    Usa sus propias claves de imagen, así que no toca ninguno de los dos botes
+    de presupuesto del agente."""
+    if dry_run or datos.get("accion_tipo") != "crear-articulo":
+        return
+    paginas = [r for r in archivos_nuevos
+               if r.endswith(".html") and "/" not in r
+               and r not in ("index.html", "log.html", "privacidad.html")]
+    if len(paginas) != 1:
+        # Ni una página nueva identificable, o varias: sin un slug claro no se
+        # puede asociar la imagen a una URL, y una fila de la matriz que apunta
+        # a la URL equivocada es peor que no tenerla.
+        return
+    slug = paginas[0][:-len(".html")]
+    tema = (datos.get("output_resumen") or slug).strip()
+    try:
+        import matriz_imagenes
+        matriz_imagenes.generar(ia, slug, tema)
+    except Exception as e:
+        print(f"[{ia}] matriz de imágenes no pudo correr para {slug}: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in {"claude", "gpt", "gemini", "deepseek"}:
-        print("Uso: python cron_agente.py <claude|gpt|gemini|deepseek> [--newsletter] [--dry-run]")
+        print("Uso: python cron_agente.py <claude|gpt|gemini|deepseek> [--newsletter|--diseno] [--dry-run]")
         sys.exit(1)
-    ejecutar(sys.argv[1], "--newsletter" in sys.argv[2:], "--dry-run" in sys.argv[2:])
+    _flags = sys.argv[2:]
+    if "--newsletter" in _flags and "--diseno" in _flags:
+        raise SystemExit("--newsletter y --diseno son turnos distintos: elige uno")
+    ejecutar(sys.argv[1], "--newsletter" in _flags, "--dry-run" in _flags,
+             diseno="--diseno" in _flags)

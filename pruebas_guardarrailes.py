@@ -57,6 +57,15 @@ CASOS = [
         '<form action="#" method="post" onsubmit="event.preventDefault()">'), True),
     ("formulario sin consentimiento", lambda h: h.replace('name="consentimiento" required', 'name="otro"'), True),
     ("sin attribs_origen (solo avisa)", lambda h: h.replace('<input type="hidden" name="attribs_origen" id="origen" value="directo">', ""), False),
+    # Comentarios HTML: el navegador no los ve, el filtro tampoco debe verlos.
+    ("enlace al diario comentado", lambda h: h.replace(
+        '<a href="/log">diario de guerra</a>', '<!-- <a href="/log">diario de guerra</a> -->'), True),
+    ("casilla de consentimiento comentada", lambda h: h.replace(
+        '<input type="checkbox" id="consentimiento" name="consentimiento" required>',
+        '<!-- <input type="checkbox" id="consentimiento" name="consentimiento" required> -->'), True),
+    ("frase de transparencia comentada", lambda h: h.replace(
+        "Esta web la escribe y la gestiona una IA.",
+        "<!-- Esta web la escribe y la gestiona una IA. -->"), True),
 ]
 
 

@@ -295,6 +295,28 @@ _RE_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
 
 
 _RE_H1 = re.compile(r"<h1[\s>]", re.IGNORECASE)
+_RE_COMENTARIO = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _sin_comentarios(html: str) -> str:
+    """Quita los comentarios HTML antes de comprobar nada.
+
+    Un comentario no existe para el navegador ni para quien visita la web, y
+    estos checks preguntan por lo que el visitante ve. Sin esto había un
+    desfase real entre lo que valida el filtro y lo que se publica: un
+    `<!-- <a href="/log">diario</a> -->` daba por cumplido el enlace al
+    diario, y un `<!-- <input type="checkbox" required> -->` daba por
+    cumplido el consentimiento. Ninguno de los dos habría existido en la
+    página. Lo señaló la revisión automática de seguridad del 2026-09-02 y
+    se reprodujo antes de tocar nada: los dos colaban.
+
+    No es defensa contra un atacante —solo las 4 IAs escriben aquí— sino
+    contra el caso realista: un rediseño que comenta un bloque para probar
+    algo, se lo deja comentado y pasa el filtro igual.
+    """
+    return _RE_COMENTARIO.sub(" ", html)
+
+
 _RE_HEADER = re.compile(r"<header\b[^>]*>.*?</header>", re.IGNORECASE | re.DOTALL)
 
 # Reconocer que lo escribe una IA, dicho como a cada una le dé la gana. La
@@ -346,6 +368,7 @@ def _transparencia(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str
     for ruta, contenido in sorted(archivos_nuevos.items()):
         if not ruta.endswith(".html"):
             continue
+        contenido = _sin_comentarios(contenido)
         if not _dice_que_es_una_ia(contenido):
             bloqueantes.append(
                 f"{ruta}: en ninguna parte se dice que detrás de esto hay una IA. "
@@ -384,6 +407,7 @@ def _diario_arriba(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]
         index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
     else:
         return []
+    index = _sin_comentarios(index)
     m = _RE_H1.search(index)
     cabecera = (index[: m.start()] if m else "") + "".join(_RE_HEADER.findall(index))
     if not cabecera:
@@ -518,6 +542,7 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
     for ruta, contenido in sorted(archivos_nuevos.items()):
         if not ruta.endswith(".html"):
             continue
+        contenido = _sin_comentarios(contenido)
         formularios = [f for f in _RE_FORM.findall(contenido) if _RE_CAMPO_EMAIL.search(f)]
         if ruta == "index.html" and not formularios:
             avisos.append(

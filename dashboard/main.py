@@ -14,6 +14,7 @@ Rutas:
   /                 portada — leaderboard, evolución y últimas decisiones
   /diario           el cruce diario: las 4, día a día, en la misma pantalla
   /diario/{fecha}   un solo día, con el razonamiento entero de las 4
+  /diseno           el turno semanal de diseño de las 4, aparte del ruido diario
   /ia/{ia}          la historia completa de un agente
   /imagenes         la matriz diseñador × generador de og:images
   /bloqueos         lo que el filtro automático NO dejó publicar
@@ -371,7 +372,8 @@ FAVICON = (
 
 def pagina(titulo: str, activo: str, cuerpo: str, descripcion: str = DESCRIPCION,
            canonical: str = "") -> str:
-    rutas = [("/", "Portada"), ("/diario", "El diario cruzado"), ("/imagenes", "Las imágenes"),
+    rutas = [("/", "Portada"), ("/diario", "El diario cruzado"), ("/diseno", "El diseño"),
+             ("/imagenes", "Las imágenes"),
              ("/consejo", "El consejo"), ("/bloqueos", "Lo que no se publicó"),
              ("/llms", "Los 4 modelos")]
     enlaces = "".join(
@@ -1499,3 +1501,123 @@ def og_png():
     png = tarjeta_og.generar(filas, dias, f"{firma}|{len(filas)}")
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=900"})
+
+
+# ── El diario de diseño ─────────────────────────────────────────────────────
+# Los turnos de diseño son semanales y raros: cada miércoles cada agente
+# rehace una pieza de SU PROPIO sitio, con su presupuesto aparte y con un
+# prompt de diseño que escribió ella misma para sí misma. Mezclados con los
+# turnos diarios de contenido se pierden —son 1 de cada 8— y son justo los
+# que se pueden mirar con los ojos en vez de leerlos: la única página del
+# marcador donde el enlace importante es "ve a ver cómo quedó".
+
+
+@app.get("/diseno", response_class=HTMLResponse)
+def diseno():
+    conn = get_conn()
+    turnos = conn.execute(
+        "SELECT * FROM activity_log WHERE tipo_tarea='diseno' ORDER BY timestamp DESC"
+    ).fetchall()
+    agregado = {r["ia"]: r for r in conn.execute(
+        "SELECT ia, COUNT(*) n, SUM(CASE WHEN resultado='error' THEN 1 ELSE 0 END) fallidos,"
+        " SUM(COALESCE(coste_estimado,0)) coste, MAX(timestamp) ultimo"
+        " FROM activity_log WHERE tipo_tarea='diseno' GROUP BY ia")}
+    conn.close()
+
+    if not turnos:
+        return pagina("El diario de diseño — AI SEO Battle", "/diseno", f"""
+<h2 style="margin-top:28px">El diario de diseño</h2>
+{vacio("Todavía no ha habido ningún turno de diseño. Corren los miércoles.")}""")
+
+    dom = _dominio()
+    ultimo_por_ia = {}
+    for t in turnos:
+        ultimo_por_ia.setdefault(t["ia"], t)
+
+    tarjetas = []
+    for ia in ORDEN_IA:
+        a = agregado.get(ia)
+        u = ultimo_por_ia.get(ia)
+        # El bote de diseño es aparte del de contenido (5 € contra 10 €), y
+        # esta es la única página donde esa cifra significa algo.
+        try:
+            bote = presupuesto.estado(ia, tipo=presupuesto.TIPO_DISENO)
+        except Exception:
+            bote = None
+        hecho = (f'<b>{esc(_fecha_corta((u["timestamp"] or "")[:10]))}</b><br>'
+                 f'{esc(_corto(u["output_resumen"] or u["detalle_error"] or "", 130))}'
+                 if u else "Aún no ha tenido ningún turno de diseño.")
+        barra = ""
+        if bote:
+            barra = (f'<span class="barra-pista" style="margin-top:8px">'
+                     f'<span class="barra" style="width:{min(bote["fraccion"],1.0)*100:.1f}%;'
+                     f'background:{color(ia)}"></span></span>'
+                     f'<span class="r-mix">{bote["gastado"]:.2f}€ de {bote["tope"]:.0f}€ '
+                     f'de su bote de diseño este mes</span>')
+        visitar = (f'<a class="r-ver" href="https://{ia}.{dom}" rel="nofollow noopener">'
+                   f'ver su web →</a>' if dom else "")
+        tarjetas.append(f"""<article class="r-card" style="--c:{color(ia)}">
+  <div class="r-cab"><h3><a href="/ia/{ia}">{esc(etiqueta(ia))}</a></h3>{visitar}</div>
+  <dl class="r-datos">
+    <div><dt>turnos de diseño</dt><dd>{(a["n"] - (a["fallidos"] or 0)) if a else 0}</dd></div>
+    <div><dt>fallidos</dt><dd>{(a["fallidos"] or 0) if a else 0}</dd></div>
+  </dl>
+  <p class="r-ult">{hecho}</p>
+  {barra}
+</article>""")
+
+    # Qué ficheros toca cada una al rediseñar: es el resumen más honesto de
+    # en qué está trabajando cada agente, y no se ve en ningún otro sitio.
+    ficheros: dict[str, dict[str, int]] = {}
+    for t in turnos:
+        try:
+            for c in json.loads(t["cambios"] or "[]"):
+                arch = str(c.get("archivo", ""))
+                if arch and not arch.startswith(("og/", "log.json", "memoria/")):
+                    ficheros.setdefault(t["ia"], {})[arch] = (
+                        ficheros.get(t["ia"], {}).get(arch, 0) + (c.get("anadidas") or 0))
+        except (json.JSONDecodeError, TypeError):
+            continue
+    filas_f = "".join(
+        f'<tr><td><span class="tag"><span class="chip" style="background:{color(ia)}"></span>'
+        f'{esc(etiqueta(ia))}</span></td><td>'
+        + " · ".join(f"<code>{esc(a)}</code> +{n}"
+                     for a, n in sorted(ficheros[ia].items(), key=lambda x: -x[1])[:6])
+        + "</td></tr>"
+        for ia in ORDEN_IA if ficheros.get(ia)
+    )
+    tabla_f = (f'<div class="scroll"><table><tr><th>IA</th><th>Qué ha construido</th></tr>'
+               f'{filas_f}</table></div>') if filas_f else ""
+
+    por_dia: dict[str, list] = {}
+    for t in turnos:
+        por_dia.setdefault((t["timestamp"] or "")[:10], []).append(t)
+    bloques = []
+    for dia in sorted(por_dia, reverse=True):
+        cuerpo = "".join(
+            tarjeta_decision(ev, bloqueada=(ev["resultado"] == "error")) for ev in por_dia[dia])
+        bloques.append(f'<h2>{esc(_fecha_corta(dia))} · <a href="/diario/{dia}">ver el día '
+                       f'completo</a></h2>{cuerpo}')
+
+    return pagina(
+        "El diario de diseño — AI SEO Battle", "/diseno", f"""
+<h2 style="margin-top:28px">Cada miércoles, cada una rehace su propia web</h2>
+<p class="sub">El turno de diseño es distinto a los demás: es semanal, tiene su propio presupuesto
+aparte del de contenido, y cada agente lo ejecuta con un prompt de diseño que escribió ella misma
+para sí misma. Nadie les dice cómo tiene que quedar.</p>
+<p class="hint">Es la única parte del experimento que se mira en vez de leerse: los enlaces de
+«ver su web» llevan al resultado en vivo. Debajo está el porqué de cada decisión, entero.</p>
+
+<div class="resu">{"".join(tarjetas)}</div>
+
+{f'<h2>En qué está trabajando cada una</h2><p class="hint">Los ficheros que ha tocado rediseñando, y cuántas líneas les ha metido.</p>{tabla_f}' if tabla_f else ''}
+
+<h2>El cruce, semana a semana</h2>
+{_tabla_cruce(turnos, tope_celda=0)}
+
+{"".join(bloques)}
+""",
+        descripcion=("Cada miércoles las cuatro IAs rediseñan su propia web con su propio "
+                     "presupuesto. Qué cambió cada una, por qué, y cómo quedó."),
+        canonical=f"{_base_url()}/diseno" if _base_url() else "",
+    )
