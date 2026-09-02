@@ -297,6 +297,14 @@ ESTILO = """
   .p-imgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 14px 15px; }
   .p-img figcaption { font-size: .74rem; color: var(--text-2); margin-top: 6px; line-height: 1.4; }
   .p-img figcaption b { color: var(--text); }
+  /* La imagen que de verdad sirve la web frente a la que solo se generó: la
+     diferencia decide qué CTR significa algo, así que se ve de un vistazo. */
+  .sello { display: inline-block; font-size: .66rem; text-transform: uppercase;
+           letter-spacing: .06em; padding: 1px 7px; border-radius: 999px;
+           border: 1px solid var(--border); color: var(--text-3); margin-bottom: 5px; }
+  .sello.vive { border-color: var(--s3); color: var(--s3); font-weight: 600; }
+  .p-img.dormida img { opacity: .62; }
+  .p-img.dormida:hover img { opacity: 1; }
   /* `contain` y no `cover`: aquí la imagen ES el dato que se compara, y
      recortarla para que cuadre en la caja sería comparar dos recortes. */
   .p-img { margin: 0; }
@@ -1381,13 +1389,14 @@ def imagenes():
     """
     conn = get_conn()
     filas = conn.execute(
-        "SELECT * FROM imagenes_matriz WHERE resultado='exito' ORDER BY creado_el DESC LIMIT 60"
+        "SELECT * FROM imagenes_matriz WHERE resultado='exito'"
+        " ORDER BY creado_el DESC LIMIT 60"
     ).fetchall()
     celdas = {(r["disenador"], r["generador"]): r for r in conn.execute(
         "SELECT disenador, generador, COUNT(*) n, AVG(ctr) ctr, SUM(clics) clics,"
         " SUM(impresiones) impresiones, AVG(coste_prompt_usd + coste_imagen_usd) coste,"
-        " AVG(seg_imagen) seg FROM imagenes_matriz WHERE resultado='exito'"
-        " GROUP BY disenador, generador")}
+        " AVG(seg_imagen) seg, SUM(publicada) servidas FROM imagenes_matriz"
+        " WHERE resultado='exito' GROUP BY disenador, generador")}
     fallos = conn.execute(
         "SELECT COUNT(*) n FROM imagenes_matriz WHERE resultado='error'").fetchone()["n"]
     conn.close()
@@ -1407,9 +1416,11 @@ def imagenes():
                     continue
                 ctr = (f'{c["ctr"] * 100:.2f}% CTR' if c["ctr"] is not None
                        else "CTR aún sin datos")
+                servidas = c["servidas"] or 0
                 tds.append(
                     f'<td><span class="n-grande">{ctr}</span>'
-                    f'<span class="sub-celda">{c["n"]} imagen{"es" if c["n"] != 1 else ""} · '
+                    f'<span class="sub-celda">{c["n"]} generada{"s" if c["n"] != 1 else ""}, '
+                    f'{servidas} servida{"s" if servidas != 1 else ""} · '
                     f'{(c["coste"] or 0) * 100:.1f}¢ · {(c["seg"] or 0):.0f}s</span></td>')
             cuerpos.append(
                 f'<tr><td><span class="tag"><span class="chip" style="background:{color(dis)}">'
@@ -1431,10 +1442,16 @@ def imagenes():
             if not src:
                 continue
             ctr = (f'{r["ctr"] * 100:.2f}% CTR' if r["ctr"] is not None else "sin datos de CTR aún")
-            cajas.append(f"""<figure class="p-img">
+            # Solo una de las dos se sirve de verdad, y es la única cuyo CTR
+            # significa algo: decirlo aquí evita leer la galería como si
+            # ambas compitieran a la vez sobre la misma URL.
+            viva = bool(r["publicada"])
+            sello = ('<span class="sello vive">se sirve en la web</span>' if viva
+                     else '<span class="sello">generada, no servida</span>')
+            cajas.append(f"""<figure class="p-img{'' if viva else ' dormida'}">
 <img src="{esc(src)}" alt="og:image de {esc(slug)} dibujada por {esc(r["generador"])}"
      width="1200" height="630" loading="lazy">
-<figcaption><b>La piensa {esc(etiqueta(r["disenador"]))} · la dibuja {esc(r["generador"])}</b><br>
+<figcaption>{sello}<br><b>La piensa {esc(etiqueta(r["disenador"]))} · la dibuja {esc(r["generador"])}</b><br>
 {esc(ctr)} · {(r["coste_imagen_usd"] or 0) * 100:.1f}¢ · {(r["seg_imagen"] or 0):.0f}s ·
 {(r["bytes"] or 0) // 1024} KB</figcaption></figure>""")
         if not cajas:
