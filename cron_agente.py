@@ -1287,7 +1287,16 @@ def tipo_tarea_de(datos: dict, newsletter: bool, diseno: bool) -> str:
     if diseno:
         return "diseno"
     declarado = (datos.get("tipo_tarea") or "").strip()
-    if declarado:
+    # "diseno" es una etiqueta reservada: de ella depende qué bote paga el
+    # turno (5 € contra 10 €) y en qué diario del marcador aparece. Un turno
+    # normal no puede autoclasificarse ahí solo porque le pareció "trabajo de
+    # diseño" — pasó de verdad el 2026-09-02: un turno de RECUPERACIÓN de
+    # Gemini (arreglar enlaces rotos, añadir logo y favicon) se declaró a sí
+    # mismo tipo_tarea="diseno" corriendo fuera del turno de diseño, y su
+    # coste salió del bote de contenido con la etiqueta del otro. Se acepta
+    # cualquier texto libre menos justo ese, que solo puede venir de aquí
+    # arriba.
+    if declarado and declarado.lower() != "diseno":
         return declarado
     if newsletter:
         return "contenido-newsletter"
