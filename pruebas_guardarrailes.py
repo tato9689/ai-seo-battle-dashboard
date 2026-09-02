@@ -66,6 +66,17 @@ CASOS = [
     ("frase de transparencia comentada", lambda h: h.replace(
         "Esta web la escribe y la gestiona una IA.",
         "<!-- Esta web la escribe y la gestiona una IA. -->"), True),
+    # Las miniaturas las escribe el sistema DESPUÉS del turno: enlazarlas no
+    # es un enlace roto. Tres turnos se perdieron el 2026-09-02 porque sí lo
+    # era para el filtro.
+    ("enlaza la miniatura de una pieza suya", lambda h: h.replace(
+        "<h1>Calibrar tu impresora</h1>",
+        '<h1>Calibrar tu impresora</h1><img src="/og/miniatura/index.jpg" alt="portada" '
+        'width="640" height="336">'), False),
+    ("enlaza la miniatura de una pieza inventada", lambda h: h.replace(
+        "<h1>Calibrar tu impresora</h1>",
+        '<h1>Calibrar tu impresora</h1><img src="/og/miniatura/no-escrita.jpg" alt="x" '
+        'width="640" height="336">'), True),
 ]
 
 

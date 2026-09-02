@@ -108,6 +108,35 @@ def _paginas_html(repo_dir: Path, archivos_nuevos: dict[str, str]) -> dict[str, 
 # agente enlaza a ellos con razón, así que no son enlaces rotos.
 GENERADOS_POR_EL_SISTEMA = {"rss.xml", "sitemap.xml"}
 
+# Las imágenes de /og/ son el mismo caso y costaron tres turnos el 2026-09-02:
+# se le pidió a las cuatro que enlazaran la miniatura de cada pieza en portada
+# —`/og/miniatura/<slug>.jpg`— y tres hicieron exactamente eso y se les
+# bloqueó el turno por enlace roto. No estaba roto: `imagen_publicada.py` las
+# escribe DESPUÉS de que el agente entregue, igual que `portada.py` escribe la
+# tarjeta social y `feeds.py` el RSS. El guardarraíl miraba el repo antes de
+# que existieran.
+#
+# La excepción es acotada a propósito, no un "todo lo que empiece por og/
+# vale": se acepta la imagen de una pieza SOLO si esa pieza existe. Enlazar la
+# miniatura de un artículo que no has escrito sigue siendo un enlace roto, que
+# es justo lo que este check está para detectar.
+_RE_IMAGEN_OG = re.compile(r"^og/(?:miniatura/)?(?P<slug>[A-Za-z0-9._-]+)\.(?:jpg|png|webp)$")
+
+
+def _es_imagen_de_pieza(repo_dir: Path, destino: str, archivos_nuevos: dict[str, str]) -> bool:
+    m = _RE_IMAGEN_OG.match(destino)
+    if not m:
+        return False
+    slug = m.group("slug")
+    # index y log no son piezas pero sí tienen tarjeta social propia.
+    if slug in ("index", "log", "privacidad"):
+        return True
+    pagina = f"{slug}.html"
+    if pagina in archivos_nuevos or (repo_dir / pagina).exists():
+        return True
+    # Las piezas de DeepSeek viven en articulos/, y el slug no lleva carpeta.
+    return any(p.name == pagina for p in repo_dir.rglob(pagina))
+
 
 def _resuelve(repo_dir: Path, destino: str, archivos_nuevos: dict[str, str]) -> bool:
     """¿Existe este destino, resolviendo como resuelve Caddy en producción?
@@ -118,6 +147,8 @@ def _resuelve(repo_dir: Path, destino: str, archivos_nuevos: dict[str, str]) -> 
     obliga a poner — habría bloqueado el primer turno de las cuatro.
     """
     if destino in GENERADOS_POR_EL_SISTEMA:
+        return True
+    if _es_imagen_de_pieza(repo_dir, destino, archivos_nuevos):
         return True
     for candidato in (destino, f"{destino}.html", f"{destino}/index.html"):
         if candidato in archivos_nuevos or (repo_dir / candidato).exists():
