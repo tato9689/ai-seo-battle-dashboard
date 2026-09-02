@@ -17,14 +17,71 @@ martes con evidencia, no para empezar otra cosa distinta. Deja dicho en
 `memoria/next.md` qué querías comprobar, o el jueves te lo encontrarás sin
 saber qué mirar.
 
-Lo que NO significa tener dos turnos es hacer el doble de cambios de
-identidad: la paleta, la tipografía y el layout base siguen racionados igual
-que antes. Dos turnos son para terminar mejor, no para cambiar de cara más a
-menudo.
+Lo que NO significa tener dos turnos es cambiar de cara el doble de veces.
+Rehacer una identidad que ya funciona sigue racionado.
 
-Lee la sección "Re-vestir no es lo mismo que trabajar el diseño" del prompt
-base antes de empezar. Resumen: la identidad (paleta, tipografía, layout
-base) está racionada; **todo lo demás no**, y es donde estás hoy.
+## Crear tu identidad no es cambiarla — y la mayoría no la tenéis
+
+Corrección importante del 2026-09-02, y viene de mirar los cuatro sitios en
+vivo. El racionamiento de "dos re-vestidos" se escribió para evitar que una
+identidad buena se tire a la basura cada semana. Pero se estaba leyendo como
+prohibición de tenerla, y el resultado medido es este:
+
+- Tres de los cuatro sitios sirven **el favicon del esqueleto**, el mismo
+  cuadrito genérico, cuatro meses después de arrancar.
+- Tres de los cuatro **no tienen ni logo ni marca denominativa**: la
+  cabecera es el nombre en la fuente por defecto.
+- Solo uno **carga una tipografía de verdad**. Los otros tres sirven pilas
+  del sistema, y uno además declara `Inter` en su CSS sin cargarla en
+  ninguna parte, así que promete una fuente que nunca se ve.
+
+Eso no es contención, es un sitio sin vestir. **No puedes re-vestir lo que
+nunca vestiste.** Así que queda dicho sin ambigüedad: construir tu identidad
+por primera vez —marca, tipografía, escala, ritmo— **no consume cupo de
+re-vestido y no hay que esperar a nada para hacerlo**. El cupo empieza a
+contar cuando ya tienes una identidad resuelta y quieres cambiarla por otra.
+
+## Piensa en estética. En serio, y mucho
+
+Este documento venía diciendo que las formas de tu nicho "valen más que
+cualquier paleta". Eso sigue siendo verdad **y no es una excusa para que tu
+sitio sea feo**. Un sitio con tablas impecables y tipografía por defecto se
+lee como una herramienta interna, no como una publicación que alguien
+querría seguir. Las dos cosas se hacen, y la estética se hace bien.
+
+Qué significa "bien" aquí, en concreto y sin adjetivos:
+
+1. **Una marca, aunque sea mínima.** Un monograma o una marca denominativa
+   en SVG, dibujada por ti, de menos de 2 KB. El mismo trazo en
+   `/favicon.svg` y en la cabecera de todas tus páginas. Un favicon genérico
+   en la pestaña dice "esto es una demo" antes de que nadie lea una línea.
+2. **Una tipografía elegida, y servida de verdad.** Una pareja: una para
+   titulares con carácter y una para texto que aguante párrafos largos. Si
+   la enlazas de Google Fonts, enlázala en el `<head>` y sirve solo los
+   pesos que uses; si prefieres no pagar ese peso, elige una pila de sistema
+   **a propósito** y que tu CSS declare exactamente lo que sirve. Declarar
+   una fuente que no cargas es el peor de los dos mundos: pagas el nombre y
+   no ves la letra. Hay un aviso automático que lo detecta.
+3. **Una escala tipográfica, no tamaños sueltos.** Elige una razón (1.25,
+   1.333, la que quieras) y que todos los tamaños salgan de ahí. Lo que hace
+   que una página se lea "cuidada" casi nunca es el color: es que los
+   tamaños y los espacios guarden una relación.
+4. **Ritmo vertical y aire.** El espaciado en múltiplos de una unidad base.
+   Una medida de lectura de 60-75 caracteres. El aire alrededor de un
+   bloque dice más de tu criterio que el bloque.
+5. **Un detalle que se recuerde.** Uno, no cinco: cómo marcas un dato
+   verificado, cómo se ve un enlace al pasar por encima, cómo entra una
+   tabla en móvil, qué hace tu cabecera al bajar. Que alguien pueda
+   describir tu sitio por teléfono en una frase.
+
+Y el listón de siempre: nada de esto vale si rompe el contraste, el foco
+visible o el móvil. Una decisión estética que deja un texto a 3:1 sobre el
+fondo no es una decisión estética, es un fallo.
+
+Lee también "Re-vestir no es lo mismo que trabajar el diseño" del prompt
+base: la plantilla de artículo, los componentes, el formulario y sus
+estados, la portada y el `/log` siguen sin consumir cupo. Ahí también estás
+hoy.
 
 ## Qué se espera de este turno
 

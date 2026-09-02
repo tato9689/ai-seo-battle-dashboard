@@ -583,6 +583,89 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
     return bloqueantes, avisos
 
 
+_RE_FONT_FAMILY = re.compile(r"font-family\s*:\s*([^;}\n]+)", re.IGNORECASE)
+_RE_VARIABLE_CSS = re.compile(r"(--[\w-]+)\s*:\s*([^;}\n]+)")
+_RE_VAR_USO = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,[^)]*)?\)", re.IGNORECASE)
+_RE_FONT_FACE = re.compile(r"@font-face\b", re.IGNORECASE)
+
+# Pilas del sistema y web-safe de toda la vida: existen en el dispositivo, no
+# hay que cargarlas y declararlas no promete nada que no se vaya a ver.
+FUENTES_DEL_SISTEMA = {
+    "system-ui", "ui-sans-serif", "ui-serif", "ui-monospace", "ui-rounded",
+    "-apple-system", "blinkmacsystemfont", "sans-serif", "serif", "monospace",
+    "cursive", "fantasy", "inherit", "initial", "unset", "segoe ui", "roboto",
+    "helvetica", "helvetica neue", "arial", "georgia", "times", "times new roman",
+    "courier", "courier new", "menlo", "monaco", "consolas", "sfmono-regular",
+    "liberation mono", "dejavu sans", "noto sans", "cantarell", "oxygen", "ubuntu",
+    "emoji", "apple color emoji", "segoe ui emoji", "segoe ui symbol",
+}
+
+
+def _fuente_prometida_sin_servir(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: el CSS declara una tipografía que el sitio no carga en ninguna parte.
+
+    Es el peor de los dos mundos y no se ve mirando la página en tu cabeza:
+    el navegador cae a la siguiente de la pila, así que el sitio se ve con
+    la fuente del sistema mientras el CSS dice otra cosa, y quien lo escribió
+    cree que ha elegido tipografía. Comprobado en vivo el 2026-09-02: GPT
+    declaraba `Inter` en la primera posición de su pila en index.html y
+    log.html sin un solo `<link>` a Google Fonts ni un `@font-face` en todo
+    el repo. Llevaba así desde que se vistió.
+
+    Aviso y no bloqueo: una fuente que no carga no engaña a nadie ni rompe
+    nada, solo desperdicia una decisión de diseño. Se resuelve enlazándola o
+    quitándola de la pila, y las dos son decisiones del agente.
+    """
+    textos = []
+    for ruta in sorted(repo_dir.rglob("*")):
+        if ruta.is_file() and ruta.suffix.lower() in (".css", ".html") and ".git" not in ruta.parts:
+            try:
+                textos.append(ruta.read_text(encoding="utf-8", errors="ignore"))
+            except OSError:
+                continue
+    textos.extend(archivos_nuevos.values())
+    todo = "\n".join(textos)
+    if not todo:
+        return []
+
+    # Las 4 declaran su tipografía en una variable CSS (`--sans`, `--font-texto`),
+    # así que sin resolverlas este check no vería ni una sola fuente.
+    variables = {k: v.strip() for k, v in _RE_VARIABLE_CSS.findall(todo)}
+
+    def resolver(valor: str, saltos: int = 3) -> str:
+        for _ in range(saltos):
+            m = _RE_VAR_USO.search(valor)
+            if not m:
+                break
+            valor = valor[: m.start()] + variables.get(m.group(1), "") + valor[m.end():]
+        return valor
+
+    cargadas = "fonts.googleapis.com" in todo or bool(_RE_FONT_FACE.search(todo))
+    prometidas = set()
+    for declaracion in _RE_FONT_FAMILY.findall(todo):
+        primera = resolver(declaracion).split(",")[0].strip().strip("'\"").strip()
+        if not primera or primera.startswith("var("):
+            continue
+        if primera.lower() in FUENTES_DEL_SISTEMA:
+            continue
+        # Si el sitio carga fuentes, se comprueba que sea ESTA la que carga.
+        if cargadas and primera.lower().replace(" ", "+") in todo.lower().replace(" ", "+"):
+            if "fonts.googleapis.com" in todo and primera.lower().replace(" ", "+") in todo.lower():
+                continue
+            if _RE_FONT_FACE.search(todo) and primera.lower() in todo.lower():
+                continue
+        prometidas.add(primera)
+
+    if not prometidas:
+        return []
+    lista = ", ".join(sorted(prometidas))
+    return [f"tu CSS declara la tipografía {lista} pero el sitio no la carga en ninguna "
+            f"parte (ni <link> a Google Fonts ni @font-face), así que el navegador cae a "
+            f"la siguiente de la pila y esa letra no se ve nunca. O la enlazas de verdad, "
+            f"o la quitas de la pila y eliges una del sistema a propósito"]
+
+
+
 # 300 KB por imagen, tope duro pedido por Tato el 2026-09-01. Aplica a todo lo
 # que sirve el sitio, no solo a lo que genera la matriz: una foto pesada en una
 # pieza hunde el LCP en móvil, y el LCP es de los pocos factores de ranking
@@ -708,6 +791,7 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
 
     avisos += _piel_visual(repo_dir, archivos_nuevos)
     avisos += _diario_arriba(repo_dir, archivos_nuevos)
+    avisos += _fuente_prometida_sin_servir(repo_dir, archivos_nuevos)
 
     return bloqueantes, avisos
 
