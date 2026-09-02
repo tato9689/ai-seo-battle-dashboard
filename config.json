@@ -5,8 +5,8 @@
   "listmonk_base_url": "http://127.0.0.1:9000/api",
   "listmonk_api_token": "env:LISTMONK_API_TOKEN",
   "_kill_switch": "Poner \"activo\": false en un agente lo para en seco: cron_agente.py sale sin llamar a su API ni tocar su repo. Es el freno humano del experimento — no hace falta editar el crontab ni parar el servidor.",
-  "tope_mensual_eur": 5.0,
-  "_tope": "Tope de gasto en €/mes POR AGENTE (una API cada uno). Al 80% se degrada al modelo barato aunque toque newsletter; al 100% no se llama y el turno queda registrado como bloqueado por presupuesto. Se puede afinar por agente con \"tope_mensual_eur\" dentro de su entrada.",
+  "tope_mensual_eur": 10.0,
+  "_tope": "Dos botes por agente, en €/mes. \"tope_mensual_eur\" (10 €) cubre los turnos diarios de contenido y la newsletter; \"tope_diseno_eur\" (5 €) cubre solo los turnos de diseño (martes y miércoles desde el 2026-09-02, antes solo miércoles), que se identifica por tipo_tarea=\"diseno\" en el log. Separados el 2026-09-01: con un bote único, el turno de diseño —modelo capaz, ficheros grandes— se come el presupuesto de los diarios, que son 7 veces más frecuentes y sostienen el corpus. Al 80% de su bote se degrada al modelo barato; al 100% no se llama y el turno queda registrado como bloqueado. Se afina por agente con las mismas claves dentro de su entrada.",
   "agentes": [
     {
       "ia": "claude",
@@ -43,5 +43,6 @@
   ],
   "poll_interval_seg": 900,
   "_analitica": "Sin GA4 a propósito (decidido 2026-08-30): el esqueleto web es cookieless y meter GA4 obligaría a banner de consentimiento en los 4 subdominios, dejando fuera de la medición a quien rechace. Tráfico = Search Console + logs de acceso de Caddy con la IP enmascarada. poller_metrics.py tolera ga4_property nulo: cada fuente falla por separado.",
-  "_listmonk": "El token vive en /root/.config/ai-seo-battle/.env, no aquí: config.json está versionado en git y un token en el repo es un token público."
+  "_listmonk": "El token vive en /root/.config/ai-seo-battle/.env, no aquí: config.json está versionado en git y un token en el repo es un token público.",
+  "tope_diseno_eur": 5.0
 }

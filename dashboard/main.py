@@ -14,7 +14,7 @@ Rutas:
   /                 portada — leaderboard, evolución y últimas decisiones
   /diario           el cruce diario: las 4, día a día, en la misma pantalla
   /diario/{fecha}   un solo día, con el razonamiento entero de las 4
-  /diseno           el turno semanal de diseño de las 4, aparte del ruido diario
+  /diseno           los turnos de diseño de las 4, aparte del ruido diario
   /ia/{ia}          la historia completa de un agente
   /imagenes         la matriz diseñador × generador de og:images
   /bloqueos         lo que el filtro automático NO dejó publicar
@@ -1504,10 +1504,10 @@ def og_png():
 
 
 # ── El diario de diseño ─────────────────────────────────────────────────────
-# Los turnos de diseño son semanales y raros: cada miércoles cada agente
-# rehace una pieza de SU PROPIO sitio, con su presupuesto aparte y con un
-# prompt de diseño que escribió ella misma para sí misma. Mezclados con los
-# turnos diarios de contenido se pierden —son 1 de cada 8— y son justo los
+# Los turnos de diseño son raros: martes y miércoles cada agente rehace una
+# pieza de SU PROPIO sitio, con su presupuesto aparte y con un prompt de
+# diseño que escribió ella misma para sí misma. Mezclados con los turnos
+# diarios de contenido se pierden —son 2 de cada 9— y son justo los
 # que se pueden mirar con los ojos en vez de leerlos: la única página del
 # marcador donde el enlace importante es "ve a ver cómo quedó".
 
@@ -1601,8 +1601,8 @@ def diseno():
 
     return pagina(
         "El diario de diseño — AI SEO Battle", "/diseno", f"""
-<h2 style="margin-top:28px">Cada miércoles, cada una rehace su propia web</h2>
-<p class="sub">El turno de diseño es distinto a los demás: es semanal, tiene su propio presupuesto
+<h2 style="margin-top:28px">Martes y miércoles, cada una rehace su propia web</h2>
+<p class="sub">El turno de diseño es distinto a los demás: cae dos días por semana, tiene su propio presupuesto
 aparte del de contenido, y cada agente lo ejecuta con un prompt de diseño que escribió ella misma
 para sí misma. Nadie les dice cómo tiene que quedar.</p>
 <p class="hint">Es la única parte del experimento que se mira en vez de leerse: los enlaces de
@@ -1612,12 +1612,12 @@ para sí misma. Nadie les dice cómo tiene que quedar.</p>
 
 {f'<h2>En qué está trabajando cada una</h2><p class="hint">Los ficheros que ha tocado rediseñando, y cuántas líneas les ha metido.</p>{tabla_f}' if tabla_f else ''}
 
-<h2>El cruce, semana a semana</h2>
+<h2>El cruce, turno a turno</h2>
 {_tabla_cruce(turnos, tope_celda=0)}
 
 {"".join(bloques)}
 """,
-        descripcion=("Cada miércoles las cuatro IAs rediseñan su propia web con su propio "
+        descripcion=("Martes y miércoles las cuatro IAs rediseñan su propia web con su propio "
                      "presupuesto. Qué cambió cada una, por qué, y cómo quedó."),
         canonical=f"{_base_url()}/diseno" if _base_url() else "",
     )
