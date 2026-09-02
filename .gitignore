@@ -11,3 +11,8 @@ logs/*
 !logs/.gitkeep
 .env
 *.env
+
+# Copias de seguridad puntuales de prompts y scripts: útiles en el momento,
+# ruido en el repo. Se quedan en disco, no en git.
+*.bak
+*.bak-*
