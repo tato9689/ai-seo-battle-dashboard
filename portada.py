@@ -1,6 +1,19 @@
-"""Genera la imagen de portada (Open Graph) de cada pieza, como SVG.
+"""Genera la imagen de portada (Open Graph) de cada pieza, como PNG.
 
-Por qué SVG en el servidor y no un proveedor de imagen de pago:
+Era SVG hasta el 2026-09-02, y ese era el fallo: **ninguna red social
+renderiza SVG en una tarjeta**. Ni LinkedIn, ni X, ni Facebook, ni WhatsApp,
+ni Slack. Durante los primeros días los 4 sitios se compartieron exactamente
+igual que si no tuvieran imagen — que es justo lo que esta pieza existía para
+evitar. Se dibuja el mismo diseño con Pillow y se escribe PNG, que sí
+renderizan todas.
+
+De paso desaparece el peor apaño del módulo: para partir el título en líneas
+había que ESTIMAR el ancho de cada carácter (`ANCHO_CAR = TAM_TITULO * 0.60`,
+ajustado a ojo porque "con 0.52 el título se salía"). Pillow mide el texto de
+verdad, así que ahora se parte por su ancho real y el tamaño baja solo cuando
+un título no cabe, en vez de recortarlo con puntos suspensivos.
+
+Por qué dibujarlo aquí y no con un proveedor de imagen de pago:
   - 0€ y sin clave de API de la que depender durante 10 meses.
   - Determinista: una llamada de generación de imagen que falla te deja la
     pieza sin portada y no te enteras hasta que alguien comparte el enlace.
@@ -17,9 +30,13 @@ contraste basta — no hace falta una ilustración.
 Si más adelante se ve que la portada mueve clics, la imagen generada por IA
 es una mejora encima de esto, no un requisito para arrancar.
 """
-import html
+import io
 import re
 from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+import tipografia
 
 ANCHO, ALTO = 1200, 630
 
@@ -37,73 +54,100 @@ FONDO = "#12120f"
 TEXTO = "#ffffff"
 TEXTO_2 = "#b9b8ae"
 
-TAM_TITULO = 58
-# Ancho medio de un carácter a ese tamaño en una grotesca en negrita. No hay
-# motor de texto aquí para medir de verdad, así que se estima — y se estima
-# ALTO a propósito: pasarse de ancho saca el texto fuera de la imagen, mientras
-# que quedarse corto solo deja algo más de margen. Con 0.52 el título se salía.
-ANCHO_CAR = TAM_TITULO * 0.60
-MAX_CAR = int((ANCHO - 160) / ANCHO_CAR)
+# El título arranca a 58 y baja de escalón si no cabe en 4 líneas. Antes
+# había un único tamaño y lo que no cabía se cortaba con "…": perder la mitad
+# de un titular en la tarjeta es peor que enseñarlo dos puntos más pequeño.
+TAMANOS_TITULO = (58, 52, 46, 40)
 MAX_LINEAS = 4
+MARGEN = 80
+ANCHO_TEXTO = ANCHO - MARGEN * 2
 
 
-def _partir(titulo: str, max_car: int = MAX_CAR, max_lineas: int = MAX_LINEAS) -> list[str]:
-    palabras = titulo.split()
+def _ancho(texto: str, fuente) -> int:
+    return int(fuente.getbbox(texto)[2] - fuente.getbbox(texto)[0])
+
+
+def _partir(titulo: str, fuente, max_lineas: int = MAX_LINEAS) -> list[str] | None:
+    """Parte el título por el ancho REAL del texto. Devuelve None si no cabe
+    en `max_lineas` a ese tamaño, para que el llamador pruebe uno menor."""
     lineas, actual = [], ""
-    for palabra in palabras:
+    for palabra in titulo.split():
         prueba = f"{actual} {palabra}".strip()
-        if len(prueba) <= max_car:
+        if _ancho(prueba, fuente) <= ANCHO_TEXTO:
             actual = prueba
             continue
         if actual:
             lineas.append(actual)
-        # Una palabra sola más larga que la línea entera (una URL, un nombre
-        # técnico) se corta en duro: mejor eso que desbordar la imagen.
-        while len(palabra) > max_car:
-            lineas.append(palabra[:max_car - 1] + "-")
-            palabra = palabra[max_car - 1:]
+        # Una palabra sola más ancha que la línea entera (una URL, un nombre
+        # técnico): se parte en duro, mejor que desbordar la imagen.
+        while _ancho(palabra, fuente) > ANCHO_TEXTO:
+            corte = len(palabra)
+            while corte > 1 and _ancho(palabra[:corte] + "-", fuente) > ANCHO_TEXTO:
+                corte -= 1
+            lineas.append(palabra[:corte] + "-")
+            palabra = palabra[corte:]
         actual = palabra
-        if len(lineas) >= max_lineas:
-            break
-    if actual and len(lineas) < max_lineas:
+        if len(lineas) > max_lineas:
+            return None
+    if actual:
         lineas.append(actual)
-    lineas = lineas[:max_lineas]
-    if lineas and len(" ".join(lineas)) < len(titulo):
-        lineas[-1] = lineas[-1].rstrip(" .,;:") + "…"
+    if len(lineas) > max_lineas:
+        return None
     return lineas or ["Sin título"]
 
 
-def generar(titulo: str, ia: str, sitio: str = "") -> str:
-    color = COLOR_IA.get(ia, "#2a78d6")
+def _rgb(hexa: str) -> tuple[int, int, int]:
+    hexa = hexa.lstrip("#")
+    return tuple(int(hexa[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def generar(titulo: str, ia: str, sitio: str = "") -> bytes:
+    """La tarjeta de una pieza, en PNG listo para escribir a disco."""
+    color = _rgb(COLOR_IA.get(ia, "#2a78d6"))
     nombre = NOMBRE_IA.get(ia, ia)
-    lineas = _partir(titulo.strip())
+    titulo = titulo.strip() or "Sin título"
 
-    # El bloque de título se centra verticalmente en el espacio libre entre la
-    # barra superior y el pie, para que un título de una línea no quede
-    # flotando arriba y uno de cuatro no se coma el pie.
-    alto_bloque = len(lineas) * (TAM_TITULO + 14)
-    y0 = (ALTO - alto_bloque) / 2 + TAM_TITULO - 10
+    for tam in TAMANOS_TITULO:
+        f_titulo = tipografia.fuente(tam, negrita=True)
+        lineas = _partir(titulo, f_titulo)
+        if lineas:
+            break
+    else:
+        # Ni al más pequeño: se recorta, que es el último recurso.
+        tam = TAMANOS_TITULO[-1]
+        f_titulo = tipografia.fuente(tam, negrita=True)
+        lineas = (_partir(titulo, f_titulo, max_lineas=99) or ["Sin título"])[:MAX_LINEAS]
+        lineas[-1] = lineas[-1].rstrip(" .,;:") + "…"
 
-    tspans = "".join(
-        f'<tspan x="80" y="{y0 + i * (TAM_TITULO + 14):.0f}">{html.escape(l)}</tspan>'
-        for i, l in enumerate(lineas)
-    )
-    pie = html.escape(sitio) if sitio else ""
+    img = Image.new("RGB", (ANCHO, ALTO), _rgb(FONDO))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, ANCHO, 10], fill=color)
 
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{ANCHO}" height="{ALTO}" viewBox="0 0 {ANCHO} {ALTO}" role="img" aria-label="{html.escape(titulo)}">
-  <rect width="{ANCHO}" height="{ALTO}" fill="{FONDO}"/>
-  <rect x="0" y="0" width="{ANCHO}" height="10" fill="{color}"/>
-  <text font-family="Inter, Helvetica, Arial, sans-serif" font-size="{TAM_TITULO}" font-weight="700" fill="{TEXTO}" letter-spacing="-1.2">{tspans}</text>
-  <g font-family="Inter, Helvetica, Arial, sans-serif" font-size="26">
-    <circle cx="92" cy="{ALTO - 68}" r="12" fill="{color}"/>
-    <!-- Nombre y coletilla en un solo <text> con tspans: calcular la x del
-         segundo a ojo hacía que "GPT" dejara un hueco y "DeepSeek" se comiera
-         la palabra siguiente. Con dx lo espacia el propio renderizador. -->
-    <text x="118" y="{ALTO - 59}" fill="{TEXTO}" font-weight="600">{html.escape(nombre)}<tspan dx="12" fill="{TEXTO_2}" font-weight="400">escribe esto sin supervisión humana</tspan></text>
-  </g>
-  <text x="{ANCHO - 80}" y="{ALTO - 59}" text-anchor="end" font-family="Inter, Helvetica, Arial, sans-serif" font-size="24" fill="{TEXTO_2}">{pie}</text>
-</svg>
-"""
+    # El bloque de título se centra en el hueco entre la barra y el pie, para
+    # que un título de una línea no quede flotando arriba.
+    interlineado = tam + 14
+    alto_bloque = len(lineas) * interlineado
+    y = (ALTO - 90 - alto_bloque) / 2 + 10
+    for linea in lineas:
+        d.text((MARGEN, y), linea, font=f_titulo, fill=_rgb(TEXTO))
+        y += interlineado
+
+    f_pie = tipografia.fuente(26, negrita=True)
+    f_pie_2 = tipografia.fuente(26)
+    y_pie = ALTO - 78
+    d.ellipse([MARGEN, y_pie + 6, MARGEN + 24, y_pie + 30], fill=color)
+    x = MARGEN + 38
+    d.text((x, y_pie), nombre, font=f_pie, fill=_rgb(TEXTO))
+    x += _ancho(nombre, f_pie) + 12
+    d.text((x, y_pie), "escribe esto sin supervisión humana", font=f_pie_2, fill=_rgb(TEXTO_2))
+
+    if sitio:
+        d.text((ANCHO - MARGEN, y_pie + 1), sitio, font=tipografia.fuente(24),
+               fill=_rgb(TEXTO_2), anchor="ra")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
 
 
 def _slug(nombre_archivo: str) -> str:
@@ -111,7 +155,7 @@ def _slug(nombre_archivo: str) -> str:
 
 
 def escribir_para(repo_dir: Path, archivos: list[str], ia: str, base_url: str = "") -> list[str]:
-    """Crea `og/<slug>.svg` para cada HTML del turno que tenga <title>.
+    """Crea `og/<slug>.png` para cada HTML del turno que tenga <title>.
     Devuelve las rutas relativas creadas, para que el llamador las incluya en
     el mismo commit que el contenido."""
     creados = []
@@ -126,8 +170,8 @@ def escribir_para(repo_dir: Path, archivos: list[str], ia: str, base_url: str = 
         m = re.search(r"<title>(.*?)</title>", contenido, re.IGNORECASE | re.DOTALL)
         if not m or not m.group(1).strip():
             continue
-        destino = repo_dir / "og" / f"{_slug(rel)}.svg"
+        destino = repo_dir / "og" / f"{_slug(rel)}.png"
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_text(generar(m.group(1).strip(), ia, sitio), encoding="utf-8")
+        destino.write_bytes(generar(m.group(1).strip(), ia, sitio))
         creados.append(destino.relative_to(repo_dir).as_posix())
     return creados
