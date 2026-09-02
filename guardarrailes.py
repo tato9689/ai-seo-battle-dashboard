@@ -296,10 +296,33 @@ _RE_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
 
 _RE_H1 = re.compile(r"<h1[\s>]", re.IGNORECASE)
 _RE_HEADER = re.compile(r"<header\b[^>]*>.*?</header>", re.IGNORECASE | re.DOTALL)
-_RE_ENLACE_LOG = re.compile(r'href=["\']/log(?:\.html)?["\']', re.IGNORECASE)
-# "una IA" con el artículo delante: evita que un "IA" suelto dentro de
-# "GUÍA" o de una marca cuele como frase de transparencia.
-_RE_UNA_IA = re.compile(r"\buna\s+ia\b", re.IGNORECASE)
+
+# Reconocer que lo escribe una IA, dicho como a cada una le dé la gana. La
+# versión estricta de este check exigía las palabras exactas "una IA" y
+# habría tumbado un turno entero por escribir "contenido generado por IA" o
+# "una inteligencia artificial", que dicen exactamente lo mismo. Un turno de
+# diseño perdido cuesta una semana (corre los miércoles) y parte del bote:
+# el listón es "¿lo dice?", no "¿lo dice con mis palabras?".
+# `IA` va en mayúsculas y con frontera de palabra a propósito: así "GUÍA" o
+# "vía" no cuelan como transparencia, pero "IA", "IAs" o "la IA" sí.
+_RE_DIVULGA_IA = re.compile(r"\bIAs?\b")
+_RE_DIVULGA_LARGO = re.compile(r"inteligencia\s+artificial", re.IGNORECASE)
+
+
+def _dice_que_es_una_ia(html: str) -> bool:
+    visible = _texto_visible(html)
+    return bool(_RE_DIVULGA_IA.search(visible) or _RE_DIVULGA_LARGO.search(visible))
+
+
+def _enlaza_al_diario(html: str) -> bool:
+    """Vale cualquier forma de enlazar al diario: `/log`, `/log.html`,
+    relativa o absoluta con su propio dominio delante. Antes solo valía
+    `/log` exacto — otra forma de suspender a quien lo hace bien."""
+    for url in _RE_HREF_SRC.findall(html):
+        ruta = url.split("#")[0].split("?")[0].rstrip("/")
+        if ruta.rsplit("/", 1)[-1].lower() in ("log", "log.html"):
+            return True
+    return False
 
 
 def _transparencia(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
@@ -313,21 +336,26 @@ def _transparencia(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str
     que verificarlo: sin este check, "discreta" se convierte en "ausente" en
     tres turnos de rediseño y nadie se entera.
 
-    No se exige una frase literal: el tono es de cada agente. Se exige que
-    aparezca "una IA" en el texto visible y que haya un enlace a `/log`.
+    Bloqueante pero ANCHO: no se exige ninguna frase concreta ni ninguna
+    forma concreta de enlazar. Se exige que la página diga que hay una IA
+    detrás (con esas siglas o con "inteligencia artificial") y que se pueda
+    llegar al diario desde ella. Cómo se redacte y cómo se maquete es de
+    cada agente, incluido el pie entero.
     """
-    bloqueantes, avisos = [], []
+    bloqueantes: list[str] = []
     for ruta, contenido in sorted(archivos_nuevos.items()):
         if not ruta.endswith(".html"):
             continue
-        visible = _texto_visible(contenido)
-        if not _RE_UNA_IA.search(visible):
+        if not _dice_que_es_una_ia(contenido):
             bloqueantes.append(
-                f"{ruta}: no dice en ninguna parte que la web la gestiona una IA. "
-                f"Va en el pie, con esas palabras ('una IA'), no arriba.")
-        if not _RE_ENLACE_LOG.search(contenido):
-            bloqueantes.append(f"{ruta}: falta el enlace al diario de guerra (/log) en el pie")
-    return bloqueantes, avisos
+                f"{ruta}: en ninguna parte se dice que detrás de esto hay una IA. "
+                f"Va en el pie y lo redactas como quieras — vale 'una IA', "
+                f"'inteligencia artificial' o cualquier frase que lo diga.")
+        if not _enlaza_al_diario(contenido):
+            bloqueantes.append(
+                f"{ruta}: no se puede llegar al diario de guerra desde esta página. "
+                f"Vale /log, /log.html o la URL absoluta, y el texto del enlace es tuyo.")
+    return bloqueantes, []
 
 
 def _diario_arriba(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
@@ -449,13 +477,26 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
     `action="#"` con un `onsubmit` que hacía `preventDefault()` y enseñaba
     un `alert` diciendo "Suscripción registrada en fase de prueba". Nunca
     llegó un solo email a Listmonk, a nadie le llegó su doble opt-in, y
-    Gemini competía por una métrica que le era imposible marcar. Sin este
-    check no se habría visto hasta que alguien se quejara.
+    Gemini competía por una métrica que le era imposible marcar.
 
-    Es bloqueante y no aviso porque un alta perdida no se recupera: la
-    persona ya se fue creyendo que estaba suscrita. Y el turno de diseño,
-    que reescribe la portada entera cada miércoles, es justo el que más
-    fácil se lo lleva por delante.
+    La línea entre bloquear y avisar es una sola pregunta: **¿se pierde
+    algo que no se pueda recuperar?**
+
+    Bloquea (el alta se pierde, o falta el consentimiento):
+      el `action` a Listmonk, `method="post"`, el campo `l`, un `onsubmit`
+      que cancele el envío, la casilla de consentimiento y el enlace a
+      privacidad. Aquí la persona ya se fue creyendo que estaba suscrita, o
+      se le guardó el correo sin permiso. No hay marcha atrás.
+
+    Solo avisa (se pierde medida, no el alta):
+      que falte `attribs_origen` o su script — el alta entra igual, solo se
+      apunta como "directo" en vez de "orgánico"; y que la portada se quede
+      sin formulario, que puede ser una decisión de diseño legítima (moverlo
+      a su propia página) y no un descuido. El aviso vuelve cada turno hasta
+      que se arregle, así que no se pierde de vista.
+
+    Todo lo visible del formulario —dónde va, qué tamaño tiene, qué dice el
+    botón, cómo se maqueta— es decisión del agente y no se toca aquí.
     """
     bloqueantes, avisos = [], []
     for ruta, contenido in sorted(archivos_nuevos.items()):
@@ -463,40 +504,41 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
             continue
         formularios = [f for f in _RE_FORM.findall(contenido) if _RE_CAMPO_EMAIL.search(f)]
         if ruta == "index.html" and not formularios:
-            bloqueantes.append(
-                "index.html: se ha quedado sin formulario de suscripción. Los "
-                "suscriptores son la métrica que decide el experimento: una "
-                "portada sin formulario no puede puntuar")
+            avisos.append(
+                "index.html: la portada se ha quedado sin formulario de suscripción. Si "
+                "lo has movido a otra página a propósito, ignora esto; si no, los "
+                "suscriptores son la métrica que decide el experimento")
             continue
         for f in formularios:
-            faltan = []
+            rotura = []
             if ACTION_ALTA not in f:
-                faltan.append(f"el action a Listmonk (.../{ACTION_ALTA})")
+                rotura.append(f"el action a Listmonk (.../{ACTION_ALTA})")
             if not _RE_METHOD_POST.search(f):
-                faltan.append('method="post"')
+                rotura.append('method="post"')
             if not _RE_CAMPO_LISTA.search(f):
-                faltan.append('el campo oculto name="l" con tu id de lista')
-            if "attribs_origen" not in f:
-                faltan.append('el campo oculto name="attribs_origen"')
-            if "consentimiento" not in f:
-                faltan.append("la casilla de consentimiento obligatoria")
-            if "/privacidad" not in f:
-                faltan.append("el enlace a la política de privacidad")
+                rotura.append('el campo oculto name="l" con tu id de lista')
             if _RE_ONSUBMIT.search(f):
-                faltan.append("quitar el onsubmit: cancela el envío y deja el "
+                rotura.append("quitar el onsubmit: cancela el envío y deja el "
                               "formulario de adorno")
-            if faltan:
+            if "consentimiento" not in f:
+                rotura.append("la casilla de consentimiento obligatoria")
+            if "/privacidad" not in f:
+                rotura.append("el enlace a la política de privacidad")
+            if rotura:
                 bloqueantes.append(
-                    f"{ruta}: el formulario de alta no funciona, le falta "
-                    + "; ".join(faltan)
-                    + ". El diseño del formulario es tuyo; su fontanería no.")
+                    f"{ruta}: el formulario de alta no llegaría a nadie o no tendría "
+                    f"consentimiento, le falta " + "; ".join(rotura)
+                    + ". El diseño del formulario es tuyo entero; su fontanería no.")
+            if "attribs_origen" not in f:
+                avisos.append(
+                    f"{ruta}: el formulario funciona pero le falta el campo oculto "
+                    f"attribs_origen, así que sus altas se apuntarán como 'directo' y "
+                    f"no contarán como orgánicas — que son las únicas que puntúan")
         if formularios and "attribs_origen" in contenido and "getElementById" not in contenido:
             avisos.append(
                 f"{ruta}: está el campo attribs_origen pero no el script que lo "
-                f"rellena, así que toda alta se apuntará como 'directo' y no "
-                f"contará como orgánica — que es la única que puntúa")
+                f"rellena, así que toda alta se apuntará como 'directo'")
     return bloqueantes, avisos
-
 
 
 # 300 KB por imagen, tope duro pedido por Tato el 2026-09-01. Aplica a todo lo

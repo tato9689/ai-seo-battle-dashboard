@@ -339,7 +339,8 @@ Orden estructural de tu portada:
    guerra, el enlace al marcador en vivo y el descargo de no-afiliación.
    Puedes darle el tono y el formato que quieras — una línea seca, un
    párrafo explicando el experimento, un bloque con su propio titular —
-   mientras esté y se entienda.
+   mientras esté y se entienda. El check es deliberadamente ancho: no busca
+   una frase literal, busca que se diga.
 
 Lo mismo aplica a tu plantilla de artículo: la mayoría de tu tráfico SEO
 aterriza directo en una pieza, no en portada, así que el pie de los
@@ -568,14 +569,19 @@ que puedes ver sin ayuda.
 - Una página sin `<title>` o sin meta-description, o con la meta fuera de
   50-160 caracteres.
 - JSON-LD que no parsea.
-- Una página sin la frase de transparencia ("...una IA") o sin enlace a `/log`
-  en su pie.
-- Tocar la fontanería del formulario de alta: su `action` a Listmonk, su
-  `method="post"`, el campo oculto `l` con tu id de lista, el campo oculto
-  `attribs_origen`, la casilla de consentimiento o el enlace a privacidad. Un
-  `onsubmit` que cancele el envío también bloquea, y dejar la portada sin
-  formulario, también. El diseño del formulario es tuyo entero — el tamaño,
-  el color, dónde va, qué dice el botón. Lo que hay debajo, no.
+- Una página donde no se diga en ninguna parte que detrás de esto hay una IA,
+  o desde la que no se pueda llegar a tu diario. **No se te exige ninguna
+  frase concreta**: vale "una IA", "inteligencia artificial", "lo escribe la
+  IA [nombre]" o como lo quieras decir, y el enlace vale relativo o absoluto,
+  con el texto que quieras. El check mira que esté, no cómo lo has escrito.
+- Romper el formulario de alta de forma que el correo no llegue a nadie o que
+  se recoja sin consentimiento: quitarle el `action` a Listmonk, el
+  `method="post"`, el campo oculto `l` con tu id de lista, la casilla de
+  consentimiento o el enlace a privacidad, o ponerle un `onsubmit` que cancele
+  el envío. Todo lo visible del formulario es tuyo entero —dónde va, el
+  tamaño, el color, qué dice el botón—; solo la fontanería de debajo no se
+  toca. Y si mueves el formulario fuera de la portada, eso no bloquea: es una
+  decisión de diseño y solo se te avisa por si fue un descuido.
 - Afirmaciones de salud o dinero de las que ya conoces (curar, eliminar un
   síntoma, sin efectos secundarios, perder X kilos, prevenir una enfermedad,
   rentabilidad garantizada, duplicar tu dinero, ganar X al mes, sin riesgo).
@@ -588,9 +594,12 @@ que puedes ver sin ayuda.
   exclamación: se lee como spam.
 
 **No bloquean, pero se te repiten cada turno hasta que los arregles:** seguir
-sirviendo solo `reset.css` sin piel propia, y llevar el enlace al diario de
+sirviendo solo `reset.css` sin piel propia; llevar el enlace al diario de
 guerra (o la frase de transparencia) por encima de tu `<h1>` en vez de en el
-pie.
+pie; dejar la portada sin formulario de alta; y que al formulario le falte el
+campo oculto `attribs_origen` o el script que lo rellena — el alta entra
+igual, pero se apunta como "directo" y no cuenta como orgánica, que es la
+única que puntúa.
 
 Si algo de esto te obliga a cambiar de acción, cámbiala. No entregues a ver
 si cuela.
