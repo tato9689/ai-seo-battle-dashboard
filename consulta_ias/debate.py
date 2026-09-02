@@ -37,6 +37,36 @@ SYSTEM = (
     "repetir lo ya dicho por otras salvo para matizarlo o discrepar."
 )
 
+NOMBRES = {"claude": "Claude", "gpt": "GPT", "gemini": "Gemini", "deepseek": "DeepSeek"}
+
+# Decirle a cada modelo cuál de los cuatro es. Parece obvio y faltaba: el
+# system solo decía "participas en una consulta entre 4 modelos" sin nombrar
+# a ninguno, y en el consejo del 2026-09-02 Gemini abrió su respuesta de la
+# ronda 1 con "Soy DeepSeek" y la de la ronda 3 con "Soy GPT". El acta
+# atribuye por la API que hizo la llamada, así que el texto era suyo — pero
+# quedaba un acta donde una IA se presenta como otra, que es exactamente lo
+# que el proyecto no se puede permitir publicar. En rondas por turnos el
+# contexto llega lleno de "--- gpt respondió ---", y un modelo al que nadie
+# le ha dicho quién es acaba adoptando una de las etiquetas que ve.
+IDENTIDAD = (
+    "Eres {nombre}. Los otros tres participantes son {otros}. Hablas siempre "
+    "en primera persona como {nombre} y no te presentas como ningún otro "
+    "modelo: el acta pública te atribuye por la API que te llamó, así que "
+    "decir que eres otro deja el acta mintiendo. No empieces tu respuesta "
+    "presentándote."
+)
+
+
+def con_identidad(base) -> dict[str, str]:
+    """El system de cada IA con su nombre delante. Acepta una cadena (la
+    misma base para las 4) o un dict {ia: system} ya personalizado."""
+    salida = {}
+    for ia, nombre in NOMBRES.items():
+        otros = ", ".join(n for i, n in NOMBRES.items() if i != ia)
+        cabecera = IDENTIDAD.format(nombre=nombre, otros=otros)
+        salida[ia] = cabecera + "\n\n" + (base[ia] if isinstance(base, dict) else base)
+    return salida
+
 SYSTEM_CHECKPOINT = (
     "Participas en un checkpoint de post-mortem entre 4 modelos de IA (Claude, "
     "GPT, Gemini, DeepSeek) del experimento AI SEO Battle. Te damos tus propios "
@@ -50,14 +80,45 @@ SYSTEM_CHECKPOINT = (
 ORDEN_BASE = ["claude", "gpt", "gemini", "deepseek"]
 
 
-async def _ronda_paralela(contexto: str, system: str = SYSTEM) -> dict[str, str]:
-    tareas = {ia: asyncio.to_thread(func, system, contexto) for ia, func in IAS.items()}
+def _system_de(system, ia: str) -> str:
+    """El system puede ser una cadena (la misma para las 4, el caso normal) o
+    un dict {ia: system} cuando cada una debe responder COMO ELLA MISMA, con
+    su propia personalidad delante. Lo segundo hace falta para encargos donde
+    la respuesta depende del nicho y el tono de cada agente — sin esto, las 4
+    contestan como modelos genéricos y el encargo pierde el sentido."""
+    return system[ia] if isinstance(system, dict) else system
+
+
+async def _ronda_paralela(contexto: str, system=SYSTEM) -> dict[str, str]:
+    tareas = {ia: asyncio.to_thread(func, _system_de(system, ia), contexto) for ia, func in IAS.items()}
     resultados = await asyncio.gather(*tareas.values())
     return dict(zip(tareas.keys(), resultados))
 
 
-def ronda_paralela(contexto: str, system: str = SYSTEM) -> dict[str, str]:
+def ronda_paralela(contexto: str, system=SYSTEM) -> dict[str, str]:
     return asyncio.run(_ronda_paralela(contexto, system))
+
+
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts-sistema"
+
+
+def system_con_personalidad() -> dict[str, str]:
+    """Un system por IA: su propia personalidad + el encargo del consejo. NO
+    incluye `base_comun.md` a propósito: son 5.300 palabras que se pagan por
+    las 4 y cuyo contenido (guardarraíles, formato de salida) no cambia lo
+    que se pregunta aquí. La personalidad sí, porque lleva el nicho."""
+    salida = {}
+    for ia in ORDEN_BASE:
+        personalidad = (PROMPTS_DIR / f"personalidad_{ia}.md").read_text(encoding="utf-8")
+        salida[ia] = (
+            personalidad
+            + "\n\n---\n\n"
+            + "Además de lo anterior, que sigue siendo quien eres: participas en una "
+            "consulta puntual del proyecto AI SEO Battle para ayudar a Tato a decidir. "
+            "Responde COMO TÚ MISMA, desde tu nicho y tu personalidad. Sigues en fase 1: "
+            "no menciones ni intentes deducir a las otras tres IAs."
+        )
+    return salida
 
 
 def extraer_puntuaciones(texto: str) -> dict | None:
@@ -73,11 +134,14 @@ def extraer_puntuaciones(texto: str) -> dict | None:
         return None
 
 
-def ronda_turnos(contexto: str, orden: list[str]) -> tuple[dict[str, str], str]:
+def ronda_turnos(contexto: str, orden: list[str], system=SYSTEM) -> tuple[dict[str, str], str]:
+    """El `system` era el global fijo y no un parámetro: cualquier modo que
+    personalizara el system lo perdía en cuanto la ronda dejaba de ser
+    paralela, en silencio y sin que el acta lo dijera."""
     respuestas = {}
     ctx = contexto
     for ia in orden:
-        r = IAS[ia](SYSTEM, ctx)
+        r = IAS[ia](_system_de(system, ia), ctx)
         respuestas[ia] = r
         ctx += f"\n\n--- {ia} respondió ---\n{r}"
     return respuestas, ctx
@@ -95,13 +159,19 @@ def _formatear_ronda(acta_md: list, n_ronda: int, etiqueta: str, orden: list[str
 
 
 def debate(pregunta: str, rondas: int = 2, modo: str = "mixto") -> Path:
-    assert modo in {"paralelo", "turnos", "mixto", "checkpoint"}
+    assert modo in {"paralelo", "turnos", "mixto", "checkpoint", "personal"}
+    if modo == "personal":
+        # Cada IA responde como ella misma y sin ver a las demás. Una sola
+        # ronda, siempre: en cuanto hay ronda 2 cada una lee las respuestas
+        # de las otras, y una respuesta anclada en el nicho revela el nicho.
+        # Eso rompería la fase ciega, así que aquí no es configurable.
+        rondas = 1
     acta_md = [f"# Consulta: {pregunta}", "", f"_{datetime.now(timezone.utc).isoformat()} · modo: {modo}_", ""]
     contexto = pregunta
     puntuaciones_por_ia: dict[str, dict] = {}
 
     if modo == "checkpoint":
-        respuestas = ronda_paralela(contexto, system=SYSTEM_CHECKPOINT)
+        respuestas = ronda_paralela(contexto, system=con_identidad(SYSTEM_CHECKPOINT))
         _formatear_ronda(acta_md, 1, "checkpoint", ORDEN_BASE, respuestas)
         for ia, texto in respuestas.items():
             puntos = extraer_puntuaciones(texto)
@@ -117,14 +187,16 @@ def debate(pregunta: str, rondas: int = 2, modo: str = "mixto") -> Path:
                 acta_md.append(f"| {evaluador} | " + " | ".join(fila) + " |")
     else:
         for n_ronda in range(1, rondas + 1):
-            usar_paralelo = modo == "paralelo" or (modo == "mixto" and n_ronda == 1)
+            usar_paralelo = modo in ("paralelo", "personal") or (modo == "mixto" and n_ronda == 1)
             if usar_paralelo:
-                respuestas = ronda_paralela(contexto)
-                _formatear_ronda(acta_md, n_ronda, "paralelo", ORDEN_BASE, respuestas)
+                sistema = system_con_personalidad() if modo == "personal" else SYSTEM
+                respuestas = ronda_paralela(contexto, con_identidad(sistema))
+                etiqueta = "paralelo, cada una como ella misma" if modo == "personal" else "paralelo"
+                _formatear_ronda(acta_md, n_ronda, etiqueta, ORDEN_BASE, respuestas)
                 contexto += "\n\n" + "\n".join(f"--- {ia} respondió ---\n{r}" for ia, r in respuestas.items())
             else:
                 orden = _orden_rotado(n_ronda)
-                respuestas, contexto = ronda_turnos(contexto, orden)
+                respuestas, contexto = ronda_turnos(contexto, orden, con_identidad(SYSTEM))
                 _formatear_ronda(acta_md, n_ronda, "turnos", orden, respuestas)
 
     if GASTO_CONSEJO:
