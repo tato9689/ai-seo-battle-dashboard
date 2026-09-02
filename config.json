@@ -6,7 +6,7 @@
   "listmonk_api_token": "env:LISTMONK_API_TOKEN",
   "_kill_switch": "Poner \"activo\": false en un agente lo para en seco: cron_agente.py sale sin llamar a su API ni tocar su repo. Es el freno humano del experimento — no hace falta editar el crontab ni parar el servidor.",
   "tope_mensual_eur": 10.0,
-  "_tope": "Dos botes por agente, en €/mes. \"tope_mensual_eur\" (10 €) cubre los turnos diarios de contenido y la newsletter; \"tope_diseno_eur\" (5 €) cubre solo los turnos de diseño (martes y miércoles desde el 2026-09-02, antes solo miércoles), que se identifica por tipo_tarea=\"diseno\" en el log. Separados el 2026-09-01: con un bote único, el turno de diseño —modelo capaz, ficheros grandes— se come el presupuesto de los diarios, que son 7 veces más frecuentes y sostienen el corpus. Al 80% de su bote se degrada al modelo barato; al 100% no se llama y el turno queda registrado como bloqueado. Se afina por agente con las mismas claves dentro de su entrada.",
+  "_tope": "Dos botes por agente, en €/mes. \"tope_mensual_eur\" (10 €) cubre los turnos diarios de contenido y la newsletter; \"tope_diseno_eur\" (5 €) cubre solo los turnos de diseño (martes y jueves desde el 2026-09-02, antes solo miércoles), que se identifica por tipo_tarea=\"diseno\" en el log. Separados el 2026-09-01: con un bote único, el turno de diseño —modelo capaz, ficheros grandes— se come el presupuesto de los diarios, que son 7 veces más frecuentes y sostienen el corpus. Al 80% de su bote se degrada al modelo barato; al 100% no se llama y el turno queda registrado como bloqueado. Se afina por agente con las mismas claves dentro de su entrada.",
   "agentes": [
     {
       "ia": "claude",

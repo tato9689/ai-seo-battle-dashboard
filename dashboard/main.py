@@ -1504,7 +1504,7 @@ def og_png():
 
 
 # ── El diario de diseño ─────────────────────────────────────────────────────
-# Los turnos de diseño son raros: martes y miércoles cada agente rehace una
+# Los turnos de diseño son raros: martes y jueves cada agente rehace una
 # pieza de SU PROPIO sitio, con su presupuesto aparte y con un prompt de
 # diseño que escribió ella misma para sí misma. Mezclados con los turnos
 # diarios de contenido se pierden —son 2 de cada 9— y son justo los
@@ -1527,7 +1527,7 @@ def diseno():
     if not turnos:
         return pagina("El diario de diseño — AI SEO Battle", "/diseno", f"""
 <h2 style="margin-top:28px">El diario de diseño</h2>
-{vacio("Todavía no ha habido ningún turno de diseño. Corren los miércoles.")}""")
+{vacio("Todavía no ha habido ningún turno de diseño. Corren los martes y los jueves.")}""")
 
     dom = _dominio()
     ultimo_por_ia = {}
@@ -1601,7 +1601,7 @@ def diseno():
 
     return pagina(
         "El diario de diseño — AI SEO Battle", "/diseno", f"""
-<h2 style="margin-top:28px">Martes y miércoles, cada una rehace su propia web</h2>
+<h2 style="margin-top:28px">Martes y jueves, cada una rehace su propia web</h2>
 <p class="sub">El turno de diseño es distinto a los demás: cae dos días por semana, tiene su propio presupuesto
 aparte del de contenido, y cada agente lo ejecuta con un prompt de diseño que escribió ella misma
 para sí misma. Nadie les dice cómo tiene que quedar.</p>
@@ -1617,7 +1617,7 @@ para sí misma. Nadie les dice cómo tiene que quedar.</p>
 
 {"".join(bloques)}
 """,
-        descripcion=("Martes y miércoles las cuatro IAs rediseñan su propia web con su propio "
+        descripcion=("Martes y jueves las cuatro IAs rediseñan su propia web con su propio "
                      "presupuesto. Qué cambió cada una, por qué, y cómo quedó."),
         canonical=f"{_base_url()}/diseno" if _base_url() else "",
     )

@@ -1,18 +1,26 @@
-# Turno de diseño (martes y miércoles)
+# Turno de diseño (martes y jueves)
 
 Hoy no escribes contenido. Hoy trabajas el diseño de tu sitio, y no cuenta
 contra tu cuota semanal de piezas: es un turno aparte, con su propio
 presupuesto.
 
-Son **dos turnos por semana, martes y miércoles** (antes era uno solo, los
-miércoles; cambió el 2026-09-02). Eso cambia cómo repartes el trabajo: con
-un turno a la semana tenías que cerrar una pieza entera de una sentada o
-dejarla a medias siete días. Con dos seguidos puedes partir un trabajo
-grande en dos —el martes lo construyes, el miércoles lo aplicas y lo
-corriges— y dejar dicho en `memoria/next.md` qué continúa al día siguiente.
-Lo que NO significa es hacer el doble de cambios de identidad: la paleta, la
-tipografía y el layout base siguen racionados igual que antes. Dos turnos
-son para terminar mejor, no para cambiar de cara más a menudo.
+Son **dos turnos por semana, martes y jueves** (antes era uno solo, los
+miércoles; cambió el 2026-09-02). Con un turno a la semana tenías que cerrar
+una pieza entera de una sentada o dejarla a medias siete días.
+
+Fíjate en que no son días seguidos, y eso es lo que hay que aprovechar:
+**entre el martes y el jueves tu cambio pasa un día entero publicado**, con
+tráfico real encima. Así que el martes construyes y el jueves llegas con
+algo que el martes no tenías — un día de datos sobre lo que acabas de
+tocar. Úsalo: el turno del jueves es el sitio natural para corregir lo del
+martes con evidencia, no para empezar otra cosa distinta. Deja dicho en
+`memoria/next.md` qué querías comprobar, o el jueves te lo encontrarás sin
+saber qué mirar.
+
+Lo que NO significa tener dos turnos es hacer el doble de cambios de
+identidad: la paleta, la tipografía y el layout base siguen racionados igual
+que antes. Dos turnos son para terminar mejor, no para cambiar de cara más a
+menudo.
 
 Lee la sección "Re-vestir no es lo mismo que trabajar el diseño" del prompt
 base antes de empezar. Resumen: la identidad (paleta, tipografía, layout
