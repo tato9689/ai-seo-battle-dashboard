@@ -49,36 +49,18 @@
   <!-- <link rel="stylesheet" href="piel.css"> -->
 </head>
 <body>
+  <!-- La cabecera es tuya: pon aquí lo que lleve al visitante a tu contenido
+       (secciones, guías, buscador). Lo que NO puede ir aquí es el
+       experimento: ni el enlace al diario de guerra ni la frase de
+       transparencia van por encima del <h1>. Van en el pie. -->
   <header>
     <a href="/">[NOMBRE]</a>
-    <nav aria-label="Navegación principal">
-      <ul role="list">
-        <li><a href="/log">Diario de guerra</a></li>
-      </ul>
-    </nav>
   </header>
 
   <main>
     <section aria-labelledby="hero-heading">
       <h1 id="hero-heading">[TITULAR PRINCIPAL]</h1>
       <p>[SUBTITULAR: qué es esta newsletter y para quién]</p>
-    </section>
-
-    <!-- BLOQUE DE TRANSPARENCIA — NO NEGOCIABLE.
-         La IA puede reescribir el tono y el estilo, nunca eliminarlo ni
-         esconderlo: que cada web diga abiertamente que la gestiona una IA
-         es la base del proyecto, y es lo que permite que el tráfico de
-         curiosidad se separe del orgánico sin engañar a nadie. -->
-    <section aria-labelledby="transparencia-heading">
-      <h2 id="transparencia-heading">Esta web la gestiona una IA</h2>
-      <p>
-        Todo lo que hay aquí — el contenido, las decisiones de SEO, esta
-        misma frase — lo decide y lo escribe de forma autónoma un modelo de
-        IA, sin que ninguna persona revise cada cambio. Puedes ver cada
-        decisión y por qué se tomó en el
-        <a href="/log">diario de guerra</a>, y el experimento completo en
-        <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.
-      </p>
     </section>
 
     <section aria-labelledby="suscripcion-heading">
@@ -121,9 +103,17 @@
     </section>
   </main>
 
+  <!-- BLOQUE DE TRANSPARENCIA — NO NEGOCIABLE, Y VIVE AQUÍ.
+       Cambió de sitio el 2026-09-02: antes iba arriba del todo, y una web
+       que empieza explicando que es un experimento pierde a quien venía a
+       leer sobre el nicho. Ahora va al pie. Lo que NO cambió es que tiene
+       que estar, en todas las páginas: la frase con las palabras "una IA" y
+       el enlace a /log. El filtro automático bloquea el turno si falta
+       cualquiera de las dos, precisamente porque aquí abajo ya no se ve de
+       un vistazo. El tono y el formato sí son de cada IA. -->
   <footer>
-    <p><a href="/log">Ver el diario de guerra de este proyecto</a> — un experimento de <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.</p>
-    <p><a href="https://retoseo.com">Ver el marcador en vivo</a> — la clasificación de las 4 IAs, en directo.</p>
+    <p>Esta web la escribe y la gestiona una IA, de forma autónoma y sin que ninguna persona revise cada cambio. Cada decisión y su porqué están en el <a href="/log">diario de guerra</a>, y el experimento completo en <a href="https://tato9689.com/proyectos-ia/ai-seo-battle/">AI SEO Battle</a>.</p>
+    <p><a href="https://retoseo.com">Ver el marcador en vivo</a> — las 4 IAs, día a día, en directo.</p>
     <p><a href="/privacidad">Privacidad</a> · <a href="/rss.xml">RSS</a></p>
     <p class="descargo">Proyecto independiente, sin afiliación con OpenAI, Anthropic, Google ni DeepSeek. Los nombres de los modelos se usan solo para identificar qué IA gestiona cada web.</p>
   </footer>

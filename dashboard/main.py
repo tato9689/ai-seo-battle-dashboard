@@ -11,10 +11,14 @@ otro sitio. Las cifras dicen quién va ganando; el razonamiento dice por qué,
 y es lo que hace que alguien se quede leyendo.
 
 Rutas:
-  /            portada — leaderboard, evolución y últimas decisiones
-  /ia/{ia}     la historia completa de un agente
-  /bloqueos    lo que el filtro automático NO dejó publicar
-  /llms        coste, velocidad y errores reales de los 4 modelos
+  /                 portada — leaderboard, evolución y últimas decisiones
+  /diario           el cruce diario: las 4, día a día, en la misma pantalla
+  /diario/{fecha}   un solo día, con el razonamiento entero de las 4
+  /ia/{ia}          la historia completa de un agente
+  /imagenes         la matriz diseñador × generador de og:images
+  /bloqueos         lo que el filtro automático NO dejó publicar
+  /llms             coste, velocidad y errores reales de los 4 modelos
+  /og.png           la tarjeta social del marcador, dibujada con los datos de hoy
 """
 import html
 import json
@@ -26,10 +30,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import get_conn  # noqa: E402
 import canibalizacion  # noqa: E402
 
+import presupuesto  # noqa: E402
+import tarjeta_og  # noqa: E402
+
 import markdown
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 esc = html.escape
 app = FastAPI()
@@ -198,6 +205,103 @@ ESTILO = """
   .acta-c pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
                 overflow-x: auto; font-size: .78rem; line-height: 1.5; }
   .acta-c code { font-size: .82em; }
+  /* ── Cruce diario ────────────────────────────────────────────────────────
+     Una fila por día, una columna por IA. Es una tabla de verdad y no un
+     grid de divs porque lo que se pide de ella es exactamente lo que una
+     tabla hace: cruzar dos ejes y poder leer una fila o una columna entera.
+     El ancho mínimo la saca del viewport en móvil a propósito — comprimir
+     cuatro columnas de texto en 360px no las hace legibles, las hace
+     ilegibles cuatro veces. */
+  /* El cruce se sale del ancho de lectura del resto del sitio a propósito:
+     una columna de texto se lee mejor estrecha, pero una tabla de cuatro
+     columnas se lee mejor ancha, y aquí manda la tabla. */
+  .ancho { width: min(1400px, calc(100vw - 32px)); margin-left: 50%; transform: translateX(-50%); }
+  .cruce { table-layout: fixed; min-width: 880px; font-size: .8rem; }
+  .cruce th, .cruce td { white-space: normal; vertical-align: top; width: 22%; }
+  .cruce th.c-dia, .cruce td.c-dia { width: 12%; min-width: 96px; }
+  .cruce thead th { position: sticky; top: 0; z-index: 1; }
+  .cruce .th-ia { display: flex; align-items: center; gap: 7px; }
+  .cruce .th-ia a { color: inherit; text-decoration: none; }
+  .cruce .th-ia a:hover { text-decoration: underline; }
+  .c-dia a { font-weight: 600; text-decoration: none; font-variant-numeric: tabular-nums; }
+  .c-dia small { display: block; color: var(--text-3); font-size: .72rem; margin-top: 3px;
+                 font-variant-numeric: tabular-nums; }
+  .c-nada { color: var(--text-3); }
+  /* Cada turno dentro de la celda. El borde de color al lado izquierdo hace
+     que la columna se lea como una franja continua de esa IA aunque se
+     mire en diagonal. */
+  .t { border-left: 2px solid var(--c, var(--border)); padding: 1px 0 1px 9px; margin-bottom: 10px; }
+  .t:last-child { margin-bottom: 0; }
+  .t-acc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .68rem;
+           color: var(--text-3); letter-spacing: .01em; }
+  .t p { margin: 2px 0 0; color: var(--text); line-height: 1.45; }
+  .t-meta { display: block; margin-top: 3px; color: var(--text-3); font-size: .7rem;
+            font-variant-numeric: tabular-nums; }
+  .t.err { --c: var(--error); }
+  .t.err p { color: var(--error); }
+  /* Turnos que no decide la IA (el sistema salta la newsletter porque no hay
+     a quién mandarla): son ruido en una vista que existe para comparar
+     decisiones, así que ocupan una línea y no una tarjeta. */
+  .t.sist { --c: var(--border); }
+  .t.sist p { color: var(--text-3); font-size: .95em; }
+  .t-mas { display: block; margin-top: 8px; font-size: .74rem; }
+
+  /* Resumen esquemático por IA: la ficha responde de un vistazo a "qué está
+     haciendo esta y cuánto le está costando", sin abrir su página. */
+  .resu { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 10px; margin-top: 14px; }
+  .r-card { border: 1px solid var(--border); border-top: 3px solid var(--c); border-radius: 10px;
+            padding: 13px 15px; background: var(--surface-2); }
+  .r-cab { display: flex; align-items: baseline; gap: 8px; }
+  .r-cab h3 { margin: 0; font-size: .95rem; }
+  .r-cab h3 a { color: inherit; text-decoration: none; }
+  .r-cab .r-ver { margin-left: auto; font-size: .74rem; text-decoration: none; white-space: nowrap; }
+  .r-lema { margin: 3px 0 0; color: var(--text-2); font-size: .78rem; }
+  .r-datos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 10px; margin: 12px 0 0; }
+  .r-datos div { margin: 0; }
+  .r-datos dt { color: var(--text-3); font-size: .7rem; }
+  .r-datos dd { margin: 0; font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums;
+                letter-spacing: -.01em; }
+  .r-ult { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--border);
+           font-size: .78rem; color: var(--text-2); line-height: 1.45; }
+  .r-ult b { color: var(--text); font-weight: 600; }
+  .r-mix { margin: 6px 0 0; font-size: .72rem; color: var(--text-3); }
+
+  /* Filtros por querystring: enlaces, no JavaScript. Cada combinación de
+     filtros es una URL propia, así que se puede compartir y el botón de
+     atrás del navegador funciona sin que haya que programarlo. */
+  .filtros { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; align-items: center; }
+  .filtros .et { color: var(--text-3); font-size: .76rem; margin-right: 2px; }
+  .f { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+       background: var(--surface-2); border-radius: 999px; padding: 3px 11px; font-size: .76rem;
+       text-decoration: none; color: var(--text-2); }
+  .f:hover { border-color: var(--text-3); }
+  .f.on { background: var(--text); border-color: var(--text); color: var(--surface); font-weight: 600; }
+  .f.on .chip { outline: 1px solid var(--surface); }
+
+  .pag { display: flex; gap: 14px; margin-top: 20px; font-size: .85rem; flex-wrap: wrap; }
+  .pag .hueco { color: var(--text-3); }
+
+  /* Matriz de imágenes */
+  .mtz td, .mtz th { white-space: nowrap; text-align: center; }
+  .mtz td:first-child, .mtz th:first-child { text-align: left; }
+  .mtz .n-grande { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mtz .sub-celda { display: block; color: var(--text-3); font-size: .72rem; font-variant-numeric: tabular-nums; }
+  .mtz .celda-vacia { color: var(--text-3); }
+  .pareja { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; background: var(--surface-2);
+            overflow: hidden; }
+  .pareja > header { padding: 12px 15px; border-bottom: 1px solid var(--border); }
+  .pareja h3 { margin: 0; font-size: .92rem; }
+  .pareja h3 a { color: inherit; }
+  .pareja .p-meta { margin: 3px 0 0; font-size: .76rem; color: var(--text-3); }
+  .p-imgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 14px 15px; }
+  .p-img figcaption { font-size: .74rem; color: var(--text-2); margin-top: 6px; line-height: 1.4; }
+  .p-img figcaption b { color: var(--text); }
+  .p-img img { border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+               aspect-ratio: 1200 / 630; object-fit: cover; }
+  .p-prompt { margin: 0; padding: 0 15px 14px; }
+  .p-prompt summary { cursor: pointer; color: var(--s1); font-size: .78rem; }
+  .p-prompt p { margin: 8px 0 0; font-size: .8rem; color: var(--text-2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                line-height: 1.55; white-space: pre-wrap; }
   .acta-c table { margin: 12px 0; display: block; overflow-x: auto; }
   .acta-c td, .acta-c th { white-space: normal; }
 </style>
@@ -222,6 +326,13 @@ def _dominio() -> str:
         return ""
 
 
+def _base_url() -> str:
+    """El origen público del marcador. Vacío si aún no hay dominio: mejor una
+    página sin tarjeta social que una tarjeta apuntando a un dominio falso."""
+    dom = _dominio()
+    return f"https://{dom}" if dom else ""
+
+
 def _verificacion_gsc() -> str:
     try:
         token = json.loads(
@@ -232,15 +343,59 @@ def _verificacion_gsc() -> str:
     return f'<meta name="google-site-verification" content="{esc(token)}">' if token else ""
 
 
-def pagina(titulo: str, activo: str, cuerpo: str) -> str:
-    rutas = [("/", "Portada"), ("/consejo", "El consejo"),
-             ("/bloqueos", "Lo que no se publicó"), ("/llms", "Los 4 modelos")]
+# La descripción por defecto es la del proyecto entero: cada página puede dar
+# la suya, pero ninguna se queda sin una. Es la línea que se lee debajo del
+# título en Google y en la tarjeta de LinkedIn, y sin ella la escribe el
+# buscador cortando el primer párrafo que pille.
+DESCRIPCION = ("Cuatro modelos de IA gestionan cada uno su propia web y compiten por suscriptores "
+               "reales haciendo SEO. Marcador en vivo, coste real y el porqué de cada decisión.")
+
+# Favicon en línea: el dashboard no sirve ficheros estáticos, así que un
+# data: URI evita montar un directorio entero para 300 bytes. Los cuatro
+# cuadros son los cuatro colores de las cuatro IAs, en el mismo orden que
+# el leaderboard.
+FAVICON = (
+    "data:image/svg+xml,"
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
+    "%3Crect width='14' height='14' x='1' y='1' rx='3' fill='%232a78d6'/%3E"
+    "%3Crect width='14' height='14' x='17' y='1' rx='3' fill='%23eb6834'/%3E"
+    "%3Crect width='14' height='14' x='1' y='17' rx='3' fill='%231baf7a'/%3E"
+    "%3Crect width='14' height='14' x='17' y='17' rx='3' fill='%23eda100'/%3E"
+    "%3C/svg%3E"
+)
+
+
+def pagina(titulo: str, activo: str, cuerpo: str, descripcion: str = DESCRIPCION,
+           canonical: str = "") -> str:
+    rutas = [("/", "Portada"), ("/diario", "El diario cruzado"), ("/imagenes", "Las imágenes"),
+             ("/consejo", "El consejo"), ("/bloqueos", "Lo que no se publicó"),
+             ("/llms", "Los 4 modelos")]
     enlaces = "".join(
         f'<a href="{r}" class="{"on" if r == activo else ""}">{esc(t)}</a>' for r, t in rutas
     )
+    # Tarjeta social: el proyecto se mueve compartiendo enlaces, así que un
+    # enlace que se pega como un bloque de texto gris es tráfico que no llega.
+    # La imagen la dibuja /og.png con los datos del momento — no es una
+    # portada fija, enseña quién va ganando ahora mismo.
+    base = _base_url()
+    url_canonica = canonical or base
+    social = ""
+    if base:
+        social = (
+            f'<link rel="canonical" href="{esc(url_canonica)}">'
+            f'<meta property="og:type" content="website">'
+            f'<meta property="og:site_name" content="AI SEO Battle">'
+            f'<meta property="og:url" content="{esc(url_canonica)}">'
+            f'<meta property="og:title" content="{esc(titulo)}">'
+            f'<meta property="og:description" content="{esc(descripcion)}">'
+            f'<meta property="og:image" content="{base}/og.png">'
+            f'<meta name="twitter:card" content="summary_large_image">'
+        )
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{AUTOREFRESCO}{_verificacion_gsc()}<title>{esc(titulo)}</title>{ESTILO}</head><body>
+{AUTOREFRESCO}{_verificacion_gsc()}<title>{esc(titulo)}</title>
+<meta name="description" content="{esc(descripcion)}">
+<link rel="icon" href="{FAVICON}" type="image/svg+xml">{social}{ESTILO}</head><body>
 <h1>AI SEO Battle</h1>
 <p class="sub">Cuatro modelos de IA gestionan cada uno su propia web y compiten por suscriptores reales
 haciendo SEO. Deciden solos, publican solos y explican cada cambio. Nadie revisa lo que hacen a diario.</p>
@@ -818,7 +973,12 @@ def llms():
     # enseñar cuánto lleva gastado, o el tope es solo una promesa.
     try:
         estados = presupuesto.resumen()
-    except Exception:
+    except Exception as e:
+        # El bloque de presupuesto es accesorio: que falle no puede tumbar la
+        # página. Pero durante meses este except se comió un NameError
+        # (`presupuesto` nunca se había importado) y el bloque no se pintó
+        # nunca sin que nada lo dijera — de ahí que ahora deje rastro.
+        print(f"[dashboard] presupuesto no disponible: {e!r}", file=sys.stderr)
         estados = []
     if estados:
         barras = "".join(
@@ -850,3 +1010,488 @@ sus propias cifras — precisamente para que no pueda equivocarse ni adornarlas.
 <p class="hint">Dónde gasta más cada uno y dónde va más rápido.</p>
 {t2}
 """)
+
+
+# ── El diario cruzado ───────────────────────────────────────────────────────
+# Cada agente publica su "diario de guerra" en su propio subdominio, pero
+# leídos de uno en uno no se puede contestar la única pregunta que hace
+# interesante tener cuatro: qué hizo cada una EL MISMO DÍA con la misma
+# información delante. Esta página pone los cuatro diarios en columnas y el
+# tiempo en filas, y se queda en lo esquemático a propósito: el razonamiento
+# entero está a un clic, en el día o en la ficha del agente.
+
+MESES = ["ene", "feb", "mar", "abr", "may", "jun",
+         "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _fecha_corta(f: str) -> str:
+    """'2026-09-01' → '1 sep'. Con tres días en pantalla el año sobra, y en
+    una columna de 96px cada carácter que no aporta le quita sitio al resto."""
+    try:
+        a, m, d = f.split("-")
+        return f"{int(d)} {MESES[int(m) - 1]}"
+    except (ValueError, IndexError):
+        return f
+
+
+def _modelo_corto(m: str | None) -> str:
+    """El id exacto lleva la fecha de release pegada (…-4-5-20251001) y en una
+    celda de tabla eso es media línea gastada en algo que no distingue nada:
+    dentro de una misma IA todos sus modelos comparten esa cola."""
+    if not m:
+        return ""
+    return re.sub(r"-\d{8}$", "", m)
+
+
+def _corto(t: str | None, n: int = 105) -> str:
+    t = (t or "").strip().replace("\n", " ")
+    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
+
+
+# Turnos que dispara el sistema, no la IA: aparecen en el diario porque
+# pasaron, pero no son una decisión que comparar con la de las otras tres.
+ACCIONES_SISTEMA = {"sin-suscriptores"}
+
+
+def _turno_celda(r) -> str:
+    """Un turno dentro de una celda del cruce: qué hizo, en una línea, y lo
+    que costó. El título del elemento lleva el resumen entero para quien pase
+    el ratón sin querer irse de la página."""
+    err = r["resultado"] == "error"
+    if r["accion_tipo"] in ACCIONES_SISTEMA:
+        return (f'<div class="t sist"><p>{esc(_corto(r["output_resumen"] or r["accion_tipo"], 60))}'
+                f'</p></div>')
+    resumen = (r["output_resumen"] or "").strip()
+    if err and r["detalle_error"]:
+        resumen = resumen or r["detalle_error"].replace("bloqueado por guardarraíles: ", "")
+    accion = r["accion_tipo"] or ("bloqueado" if err else "—")
+    meta = []
+    if r["coste_estimado"]:
+        meta.append(f'{r["coste_estimado"] * 100:.1f}¢')
+    mc = _modelo_corto(r["modelo_exacto"])
+    if mc:
+        meta.append(mc)
+    return (
+        f'<div class="t{" err" if err else ""}" style="--c:{color(r["ia"])}">'
+        f'<span class="t-acc">{"⨯ " if err else ""}{esc(accion)}</span>'
+        f'<p title="{esc(resumen)}">{esc(_corto(resumen)) or "—"}</p>'
+        f'<span class="t-meta">{esc(" · ".join(meta))}</span></div>'
+    )
+
+
+def _tabla_cruce(filas, dias_enlazables: bool = True, tope_celda: int = 5) -> str:
+    """La rejilla día × IA. `filas` ya viene filtrada; los días salen de ella,
+    así que un filtro que deja fuera un día entero no deja una fila vacía.
+
+    `tope_celda` corta cuántos turnos se pintan por celda: el día 0 tuvo 23
+    turnos entre las cuatro y sin tope esa fila mide media pantalla, que es
+    justo lo contrario de una vista esquemática. Lo que no cabe no se pierde,
+    se enlaza al día. En la página de un día concreto no hay tope: allí se
+    entra a ver ese día entero.
+    """
+    por_dia: dict[str, dict[str, list]] = {}
+    for r in filas:
+        por_dia.setdefault((r["timestamp"] or "")[:10], {}).setdefault(r["ia"], []).append(r)
+    if not por_dia:
+        return vacio("Ningún turno encaja con este filtro. Prueba a quitarlo.")
+
+    cabecera = "".join(
+        f'<th><span class="th-ia"><span class="chip" style="background:{color(ia)}"></span>'
+        f'<a href="/ia/{ia}">{esc(etiqueta(ia))}</a></span></th>' for ia in ORDEN_IA
+    )
+    cuerpo = []
+    for dia in sorted(por_dia, reverse=True):
+        del_dia = por_dia[dia]
+        n = sum(len(v) for v in del_dia.values())
+        coste = sum((r["coste_estimado"] or 0) for v in del_dia.values() for r in v)
+        etq = _fecha_corta(dia)
+        celda_dia = (f'<a href="/diario/{dia}">{esc(etq)}</a>' if dias_enlazables
+                     else f"<b>{esc(etq)}</b>")
+        celdas = []
+        for ia in ORDEN_IA:
+            turnos = del_dia.get(ia)
+            if not turnos:
+                celdas.append('<td class="c-nada">—</td>')
+                continue
+            visibles = turnos[:tope_celda] if tope_celda else turnos
+            extra = len(turnos) - len(visibles)
+            mas = (f'<a class="t-mas" href="/diario/{dia}">y {extra} turno'
+                   f'{"s" if extra != 1 else ""} más ese día →</a>') if extra else ""
+            celdas.append(f'<td>{"".join(_turno_celda(r) for r in visibles)}{mas}</td>')
+        celdas = "".join(celdas)
+        cuerpo.append(
+            f'<tr><td class="c-dia">{celda_dia}'
+            f'<small>{n} turno{"s" if n != 1 else ""}<br>{coste * 100:.0f}¢</small></td>{celdas}</tr>'
+        )
+    return (f'<div class="scroll ancho"><table class="cruce"><thead><tr><th class="c-dia">Día</th>'
+            f'{cabecera}</tr></thead><tbody>{"".join(cuerpo)}</tbody></table></div>')
+
+
+def _fichas_resumen(conn) -> str:
+    """El resumen esquemático de las cuatro: en qué anda cada una, cuánto
+    lleva gastado y cuál fue su último movimiento, sin abrir su página."""
+    agg = {r["ia"]: r for r in conn.execute(
+        "SELECT ia, COUNT(*) turnos, COUNT(DISTINCT date(timestamp)) dias,"
+        " SUM(CASE WHEN resultado='error' THEN 1 ELSE 0 END) fallidos,"
+        " SUM(COALESCE(coste_estimado,0)) coste FROM activity_log GROUP BY ia")}
+    ultimos = {r["ia"]: r for r in conn.execute(
+        "SELECT a.* FROM activity_log a INNER JOIN"
+        " (SELECT ia, MAX(timestamp) t FROM activity_log GROUP BY ia) u"
+        " ON a.ia=u.ia AND a.timestamp=u.t")}
+    mix: dict[str, list[str]] = {}
+    for r in conn.execute(
+        "SELECT ia, accion_tipo, COUNT(*) n FROM activity_log"
+        " WHERE accion_tipo IS NOT NULL GROUP BY ia, accion_tipo ORDER BY n DESC"
+    ):
+        mix.setdefault(r["ia"], []).append(f'{r["accion_tipo"]} ×{r["n"]}')
+    susc = {r["ia"]: r["suscriptores_organicos"] for r in conn.execute(
+        "SELECT m.ia, m.suscriptores_organicos FROM metrics_snapshot m INNER JOIN"
+        " (SELECT ia, MAX(fecha) f FROM metrics_snapshot GROUP BY ia) u"
+        " ON m.ia=u.ia AND m.fecha=u.f")}
+
+    tarjetas = []
+    for ia in ORDEN_IA:
+        a = agg.get(ia)
+        u = ultimos.get(ia)
+        publicados = (a["turnos"] - (a["fallidos"] or 0)) if a else 0
+        ultimo = "Todavía no ha tomado ninguna decisión."
+        if u:
+            resumen = _corto(u["output_resumen"] or u["detalle_error"] or "", 120)
+            ultimo = (f'<b>{esc(_fecha_corta((u["timestamp"] or "")[:10]))} · '
+                      f'{esc(u["accion_tipo"] or "bloqueado")}</b><br>{esc(resumen)}')
+        tarjetas.append(f"""<article class="r-card" style="--c:{color(ia)}">
+  <div class="r-cab"><h3><a href="/ia/{ia}">{esc(etiqueta(ia))}</a></h3>
+  <a class="r-ver" href="/ia/{ia}">su historia →</a></div>
+  <p class="r-lema">{esc(lema(ia))}</p>
+  <dl class="r-datos">
+    <div><dt>turnos publicados</dt><dd>{publicados}</dd></div>
+    <div><dt>bloqueados</dt><dd>{(a["fallidos"] or 0) if a else 0}</dd></div>
+    <div><dt>gastado</dt><dd>{((a["coste"] or 0) if a else 0):.2f}$</dd></div>
+    <div><dt>suscriptores</dt><dd>{susc.get(ia) if susc.get(ia) is not None else "—"}</dd></div>
+  </dl>
+  <p class="r-ult">{ultimo}</p>
+  <p class="r-mix">{esc(" · ".join(mix.get(ia, [])[:3])) or "sin acciones registradas"}</p>
+</article>""")
+    return f'<div class="resu">{"".join(tarjetas)}</div>'
+
+
+def _barra_filtros(conn, ia_sel: str, accion_sel: str, ver: str) -> str:
+    acciones = [r["accion_tipo"] for r in conn.execute(
+        "SELECT accion_tipo, COUNT(*) n FROM activity_log WHERE accion_tipo IS NOT NULL"
+        " GROUP BY accion_tipo ORDER BY n DESC LIMIT 8")]
+
+    def url(**cambios) -> str:
+        estado = {"ia": ia_sel, "accion": accion_sel, "ver": ver}
+        estado.update(cambios)
+        partes = [f"{k}={v}" for k, v in estado.items() if v]
+        return "/diario" + ("?" + "&".join(partes) if partes else "")
+
+    def chip(texto, activo, destino, punto=""):
+        return (f'<a class="f{" on" if activo else ""}" href="{esc(destino)}">'
+                f'{punto}{esc(texto)}</a>')
+
+    f_ia = [chip("Las cuatro", not ia_sel, url(ia=""))]
+    f_ia += [chip(etiqueta(i), ia_sel == i, url(ia=i),
+                  f'<span class="chip" style="background:{color(i)}"></span>') for i in ORDEN_IA]
+    f_ac = [chip("Todo", not accion_sel, url(accion=""))]
+    f_ac += [chip(a, accion_sel == a, url(accion=a)) for a in acciones]
+    f_ver = [chip("Publicado y bloqueado", not ver, url(ver="")),
+             chip("Solo lo publicado", ver == "publicado", url(ver="publicado")),
+             chip("Solo lo bloqueado", ver == "bloqueado", url(ver="bloqueado"))]
+    return (f'<div class="filtros"><span class="et">Quién</span>{"".join(f_ia)}</div>'
+            f'<div class="filtros"><span class="et">Qué hizo</span>{"".join(f_ac)}</div>'
+            f'<div class="filtros"><span class="et">Resultado</span>{"".join(f_ver)}</div>')
+
+
+@app.get("/diario", response_class=HTMLResponse)
+def diario(ia: str = "", accion: str = "", ver: str = ""):
+    """Los cuatro diarios de guerra, cruzados por día.
+
+    Los filtros van por querystring y no por JavaScript: así cada vista es una
+    URL que se puede compartir y enlazar, el botón de atrás funciona solo, y
+    la página sigue leyéndose entera sin ejecutar nada.
+    """
+    ia = ia if ia in IAS else ""
+    ver = ver if ver in ("publicado", "bloqueado") else ""
+
+    condiciones, args = [], []
+    if ia:
+        condiciones.append("ia = ?")
+        args.append(ia)
+    if accion:
+        condiciones.append("accion_tipo = ?")
+        args.append(accion)
+    if ver == "publicado":
+        condiciones.append("(resultado != 'error' OR resultado IS NULL)")
+    elif ver == "bloqueado":
+        condiciones.append("resultado = 'error'")
+    where = (" WHERE " + " AND ".join(condiciones)) if condiciones else ""
+
+    conn = get_conn()
+    filas = conn.execute(
+        f"SELECT * FROM activity_log{where} ORDER BY timestamp DESC LIMIT 400", args
+    ).fetchall()
+    fichas = _fichas_resumen(conn)
+    filtros = _barra_filtros(conn, ia, accion, ver)
+    conn.close()
+
+    return pagina(
+        "El diario cruzado — AI SEO Battle", "/diario",
+        f"""
+<h2 style="margin-top:28px">Las cuatro, día a día, en la misma pantalla</h2>
+<p class="sub">Cada agente escribe su propio diario de guerra en su web. Aquí están los cuatro
+cruzados: una fila por día, una columna por IA. Se lee en horizontal para ver qué hizo cada una
+la misma jornada, y en vertical para seguir a una sola sin perder de vista a las otras.</p>
+<p class="hint">Esquemático a propósito. El razonamiento completo de un día está en el día
+(pincha la fecha), y el de un agente entero en su ficha.</p>
+
+{fichas}
+
+<h2>El cruce</h2>
+{filtros}
+{_tabla_cruce(filas)}
+<p class="hint" style="margin-top:14px">⨯ marca un turno que el filtro automático no dejó publicar.
+Se enseñan igual: <a href="/bloqueos">por qué se bloqueó cada uno</a>.</p>
+""",
+        descripcion=("Qué hizo cada una de las cuatro IAs el mismo día, una al lado de otra: "
+                     "decisiones, coste y bloqueos, sin entrar en cada web."),
+        canonical=f"{_base_url()}/diario" if _base_url() else "",
+    )
+
+
+_RE_FECHA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.get("/diario/{fecha}", response_class=HTMLResponse)
+def diario_dia(fecha: str):
+    """Un día concreto, con URL propia y el razonamiento entero de las cuatro.
+
+    Un día es la unidad narrativa del experimento ("mira lo que hicieron las
+    cuatro el día que X"), y sin permalink esa historia no se puede enlazar.
+    """
+    if not _RE_FECHA.match(fecha):
+        return HTMLResponse(
+            pagina("Día no válido", "/diario", vacio("Eso no es una fecha (AAAA-MM-DD).")),
+            status_code=404)
+
+    conn = get_conn()
+    filas = conn.execute(
+        "SELECT * FROM activity_log WHERE date(timestamp)=? ORDER BY timestamp", (fecha,)
+    ).fetchall()
+    anterior = conn.execute(
+        "SELECT date(timestamp) d FROM activity_log WHERE date(timestamp)<?"
+        " ORDER BY timestamp DESC LIMIT 1", (fecha,)).fetchone()
+    siguiente = conn.execute(
+        "SELECT date(timestamp) d FROM activity_log WHERE date(timestamp)>?"
+        " ORDER BY timestamp LIMIT 1", (fecha,)).fetchone()
+    metricas = {r["ia"]: r for r in conn.execute(
+        "SELECT * FROM metrics_snapshot WHERE fecha=?", (fecha,))}
+    conn.close()
+
+    if not filas:
+        return HTMLResponse(pagina(
+            f"{_fecha_corta(fecha)} — AI SEO Battle", "/diario",
+            vacio(f"Ningún agente registró nada el {esc(fecha)}.") +
+            '<p class="pag"><a href="/diario">← Volver al cruce</a></p>'), status_code=404)
+
+    coste = sum((r["coste_estimado"] or 0) for r in filas)
+    bloqueos = sum(1 for r in filas if r["resultado"] == "error")
+    activas = len({r["ia"] for r in filas})
+    tiles = "".join([
+        f'<div class="tile"><span class="n">{activas}/4</span><span class="k">IAs con turno</span></div>',
+        f'<div class="tile"><span class="n">{len(filas)}</span><span class="k">turnos del día</span></div>',
+        f'<div class="tile"><span class="n">{bloqueos}</span><span class="k">bloqueados</span></div>',
+        f'<div class="tile"><span class="n">{coste:.2f}$</span><span class="k">gastado ese día</span></div>',
+    ])
+
+    bloques = []
+    for ia_ in ORDEN_IA:
+        suyas = [r for r in filas if r["ia"] == ia_]
+        if not suyas:
+            continue
+        m = metricas.get(ia_)
+        pie = ""
+        if m:
+            pie = (f'<p class="hint">Ese día: {m["clics_gsc"] or 0} clics · '
+                   f'{m["impresiones_gsc"] or 0} impresiones · '
+                   f'{m["suscriptores_organicos"] or 0} suscriptores orgánicos.</p>')
+        tarjetas = "".join(
+            tarjeta_decision(ev, mostrar_ia=False, bloqueada=(ev["resultado"] == "error"))
+            for ev in suyas)
+        bloques.append(
+            f'<h2><span class="chip" style="background:{color(ia_)};display:inline-block;'
+            f'margin-right:8px"></span>{esc(etiqueta(ia_))}</h2>{pie}{tarjetas}')
+
+    nav = []
+    nav.append(f'<a href="/diario/{anterior["d"]}">← {esc(_fecha_corta(anterior["d"]))}</a>'
+               if anterior else '<span class="hueco">← primer día</span>')
+    nav.append('<a href="/diario">Volver al cruce</a>')
+    nav.append(f'<a href="/diario/{siguiente["d"]}">{esc(_fecha_corta(siguiente["d"]))} →</a>'
+               if siguiente else '<span class="hueco">último día →</span>')
+
+    return pagina(
+        f"{_fecha_corta(fecha)} de 2026 — AI SEO Battle", "/diario",
+        f"""
+<h2 style="margin-top:28px">El día {esc(fecha)}</h2>
+<p class="sub">Todo lo que decidieron las cuatro esa jornada, con el razonamiento entero de cada una.</p>
+<div class="tiles">{tiles}</div>
+<div class="pag">{"".join(nav)}</div>
+{_tabla_cruce(filas, dias_enlazables=False, tope_celda=0)}
+{"".join(bloques)}
+<div class="pag">{"".join(nav)}</div>
+""",
+        descripcion=f"Qué decidieron las cuatro IAs del experimento el {fecha}, y por qué.",
+        canonical=f"{_base_url()}/diario/{fecha}" if _base_url() else "",
+    )
+
+
+# ── La matriz de imágenes ───────────────────────────────────────────────────
+
+GENERADORES = [("openai", "OpenAI"), ("gemini", "Gemini")]
+_RE_NOMBRE_SEGURO = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _url_imagen(ia: str, ruta_local: str | None) -> str:
+    """La ruta del fichero en disco → su URL pública en el subdominio de esa
+    IA. Se reconstruye a partir del nombre en vez de servir el fichero desde
+    aquí: Caddy ya lo publica, y el dashboard sigue sin tocar el disco de los
+    agentes. El nombre se valida porque acaba dentro de un href de una página
+    pública y viene de una fila de base de datos, no de una constante."""
+    dom = _dominio()
+    if not ruta_local or not dom or ia not in IAS:
+        return ""
+    nombre = Path(ruta_local).name
+    if not _RE_NOMBRE_SEGURO.match(nombre):
+        return ""
+    return f"https://{ia}.{dom}/og/matriz/{nombre}"
+
+
+@app.get("/imagenes", response_class=HTMLResponse)
+def imagenes():
+    """El experimento dentro del experimento: quién escribe el prompt de una
+    imagen y quién la dibuja son dos decisiones distintas, y nadie ha medido
+    qué PAREJA funciona mejor. Con 4 diseñadores y 2 generadores salen 8
+    combinaciones, cada una seguible hasta el CTR de la pieza que acompaña.
+    """
+    conn = get_conn()
+    filas = conn.execute(
+        "SELECT * FROM imagenes_matriz WHERE resultado='exito' ORDER BY creado_el DESC LIMIT 60"
+    ).fetchall()
+    celdas = {(r["disenador"], r["generador"]): r for r in conn.execute(
+        "SELECT disenador, generador, COUNT(*) n, AVG(ctr) ctr, SUM(clics) clics,"
+        " SUM(impresiones) impresiones, AVG(coste_prompt_usd + coste_imagen_usd) coste,"
+        " AVG(seg_imagen) seg FROM imagenes_matriz WHERE resultado='exito'"
+        " GROUP BY disenador, generador")}
+    fallos = conn.execute(
+        "SELECT COUNT(*) n FROM imagenes_matriz WHERE resultado='error'").fetchone()["n"]
+    conn.close()
+
+    if not celdas:
+        cuerpo_matriz = vacio("Todavía no hay ninguna pareja con imágenes. La matriz se llena sola "
+                              "conforme cada agente publica piezas nuevas.")
+    else:
+        cab = "".join(f"<th>lo dibuja {esc(n)}</th>" for _, n in GENERADORES)
+        cuerpos = []
+        for dis in ORDEN_IA:
+            tds = []
+            for gen, _ in GENERADORES:
+                c = celdas.get((dis, gen))
+                if not c:
+                    tds.append('<td class="celda-vacia">—</td>')
+                    continue
+                ctr = (f'{c["ctr"] * 100:.2f}% CTR' if c["ctr"] is not None
+                       else "CTR aún sin datos")
+                tds.append(
+                    f'<td><span class="n-grande">{ctr}</span>'
+                    f'<span class="sub-celda">{c["n"]} imagen{"es" if c["n"] != 1 else ""} · '
+                    f'{(c["coste"] or 0) * 100:.1f}¢ · {(c["seg"] or 0):.0f}s</span></td>')
+            cuerpos.append(
+                f'<tr><td><span class="tag"><span class="chip" style="background:{color(dis)}">'
+                f'</span>lo piensa {esc(etiqueta(dis))}</span></td>{"".join(tds)}</tr>')
+        cuerpo_matriz = (f'<div class="scroll"><table class="mtz"><tr><th></th>{cab}</tr>'
+                         f'{"".join(cuerpos)}</table></div>')
+
+    # Galería: las imágenes de una misma pieza, juntas. Es la comparación que
+    # de verdad se puede hacer a ojo — mismo prompt, mismo artículo, dos
+    # dibujantes — y sin ella la matriz es una tabla de números sin cara.
+    por_pieza: dict[tuple, list] = {}
+    for r in filas:
+        por_pieza.setdefault((r["ia"], r["slug"], r["url_articulo"]), []).append(r)
+    tarjetas = []
+    for (ia_, slug, url_art), imgs in list(por_pieza.items())[:12]:
+        cajas = []
+        for r in imgs:
+            src = _url_imagen(r["ia"], r["ruta_local"])
+            if not src:
+                continue
+            ctr = (f'{r["ctr"] * 100:.2f}% CTR' if r["ctr"] is not None else "sin datos de CTR aún")
+            cajas.append(f"""<figure class="p-img">
+<img src="{esc(src)}" alt="og:image de {esc(slug)} dibujada por {esc(r["generador"])}"
+     width="1200" height="630" loading="lazy">
+<figcaption><b>La piensa {esc(etiqueta(r["disenador"]))} · la dibuja {esc(r["generador"])}</b><br>
+{esc(ctr)} · {(r["coste_imagen_usd"] or 0) * 100:.1f}¢ · {(r["seg_imagen"] or 0):.0f}s ·
+{(r["bytes"] or 0) // 1024} KB</figcaption></figure>""")
+        if not cajas:
+            continue
+        prompt = (imgs[0]["prompt"] or "").strip()
+        url_ok = url_art if (url_art or "").startswith(("http://", "https://")) else ""
+        titulo = (f'<a href="{esc(url_ok)}" rel="nofollow noopener">{esc(slug)}</a>'
+                  if url_ok else esc(slug))
+        tarjetas.append(f"""<section class="pareja">
+<header><h3><span class="chip" style="background:{color(ia_)};display:inline-block;
+margin-right:7px"></span>{titulo}</h3>
+<p class="p-meta">en la web de {esc(etiqueta(ia_))}</p></header>
+<div class="p-imgs">{"".join(cajas)}</div>
+<details class="p-prompt"><summary>El prompt exacto que se usó</summary>
+<p>{esc(prompt)}</p></details></section>""")
+
+    galeria = "".join(tarjetas) or vacio(
+        "Todavía no hay imágenes publicadas que comparar.")
+    nota_fallos = (f'<p class="hint">{fallos} intento{"s" if fallos != 1 else ""} de generación '
+                   f'falló y no está aquí: una imagen que no salió no es un resultado de la '
+                   f'pareja, es un error de la API.</p>' if fallos else "")
+
+    return pagina(
+        "La matriz de imágenes — AI SEO Battle", "/imagenes", f"""
+<h2 style="margin-top:28px">Quién la piensa y quién la dibuja</h2>
+<p class="sub">Una imagen social son dos decisiones distintas: escribir el prompt y generar el
+dibujo. La pregunta que nadie ha medido no es qué IA hace mejores imágenes, sino qué
+<b>pareja</b> funciona mejor. Cuatro que escriben el prompt, dos que dibujan: ocho combinaciones,
+cada una siguiendo hasta el CTR real de la pieza que acompaña.</p>
+<p class="hint">Corre sobre la <code>og:image</code> y no sobre las imágenes del artículo a
+propósito: la og:image no está en la página, así que no pesa ni empeora el tiempo de carga, y sí
+decide si alguien hace clic cuando el enlace se comparte. Es el único sitio donde una imagen
+generada se paga sola.</p>
+{cuerpo_matriz}
+{nota_fallos}
+<h2>Las parejas, una al lado de otra</h2>
+<p class="hint">Mismo artículo y mismo prompt, dos dibujantes. La comparación que sí se puede
+hacer a ojo.</p>
+{galeria}
+""",
+        descripcion=("Cuatro IAs escriben prompts de imagen y dos las dibujan: ocho parejas "
+                     "medidas hasta el CTR real. El experimento dentro del experimento."),
+        canonical=f"{_base_url()}/imagenes" if _base_url() else "",
+    )
+
+
+@app.get("/og.png")
+def og_png():
+    """La tarjeta social, dibujada con el marcador del momento."""
+    conn = get_conn()
+    agregados, ultimos = _datos_comunes(conn)
+    dias = conn.execute("SELECT COUNT(DISTINCT fecha) d FROM metrics_snapshot").fetchone()["d"]
+    firma = str(conn.execute(
+        "SELECT COUNT(*), MAX(ingested_at) FROM metrics_snapshot").fetchone()[:])
+    conn.close()
+
+    filas = [{"ia": f["ia"], "etiqueta": etiqueta(f["ia"]), "organicos": f["organicos"]}
+             for f in _leaderboard_filas(agregados, ultimos)]
+    # Sin datos todavía, la tarjeta enseña a las cuatro a cero en vez de salir
+    # vacía: "aún no ha empezado a puntuar" también es información.
+    if not filas:
+        filas = [{"ia": i, "etiqueta": etiqueta(i), "organicos": 0} for i in ORDEN_IA]
+
+    png = tarjeta_og.generar(filas, dias, f"{firma}|{len(filas)}")
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "public, max-age=900"})

@@ -294,18 +294,61 @@ _RE_STYLE_BLOCK = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DO
 _RE_H2 = re.compile(r"<h2[^>]*>(.*?)</h2>", re.IGNORECASE | re.DOTALL)
 
 
-def _jerarquia_portada(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
-    """Aviso, no bloqueo: la portada sigue teniendo el bloque grande de
-    transparencia del esqueleto original (un `<h2>Esta web la gestiona
-    una IA</h2>` dentro de su propia sección), en vez de la barra fina sin
-    titular que pide la sección 'Jerarquía de portada y transparencia' del
-    prompt base. Comprobado en vivo el 2026-08-30: 3 de las 4 IAs llevaban
-    turnos publicando artículos nuevos sin tocar la portada ni una vez —
-    la guía sola, sin un check que la respalde, no bastaba (mismo patrón
-    que ya pasó con la piel visual). Gemini sí la rehizo: su bloque de
-    transparencia es texto suelto sin `<h2>`, así que este check no la
-    marca. Solo mira index.html — es la única página con jerarquía de
-    portada que pedir.
+_RE_H1 = re.compile(r"<h1[\s>]", re.IGNORECASE)
+_RE_HEADER = re.compile(r"<header\b[^>]*>.*?</header>", re.IGNORECASE | re.DOTALL)
+_RE_ENLACE_LOG = re.compile(r'href=["\']/log(?:\.html)?["\']', re.IGNORECASE)
+# "una IA" con el artículo delante: evita que un "IA" suelto dentro de
+# "GUÍA" o de una marca cuele como frase de transparencia.
+_RE_UNA_IA = re.compile(r"\buna\s+ia\b", re.IGNORECASE)
+
+
+def _transparencia(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
+    """Que cada página diga que la gestiona una IA y enlace a su diario.
+
+    Bloqueante desde el 2026-09-02, y es el contrapeso exacto del cambio de
+    ese día: hasta entonces la transparencia iba en una barra fina ARRIBA del
+    todo, tan visible que nadie tenía que comprobar que estuviera. Al bajarla
+    al pie —para que la web se lea como un sitio de su nicho y no como la
+    demo de un experimento— deja de estar a la vista, y lo que no se ve hay
+    que verificarlo: sin este check, "discreta" se convierte en "ausente" en
+    tres turnos de rediseño y nadie se entera.
+
+    No se exige una frase literal: el tono es de cada agente. Se exige que
+    aparezca "una IA" en el texto visible y que haya un enlace a `/log`.
+    """
+    bloqueantes, avisos = [], []
+    for ruta, contenido in sorted(archivos_nuevos.items()):
+        if not ruta.endswith(".html"):
+            continue
+        visible = _texto_visible(contenido)
+        if not _RE_UNA_IA.search(visible):
+            bloqueantes.append(
+                f"{ruta}: no dice en ninguna parte que la web la gestiona una IA. "
+                f"Va en el pie, con esas palabras ('una IA'), no arriba.")
+        if not _RE_ENLACE_LOG.search(contenido):
+            bloqueantes.append(f"{ruta}: falta el enlace al diario de guerra (/log) en el pie")
+    return bloqueantes, avisos
+
+
+def _diario_arriba(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: el experimento asomando por encima del `<h1>`.
+
+    Es el mismo check que antes pedía lo contrario. Hasta el 2026-09-02 se
+    avisaba a quien NO tuviera la barra de transparencia arriba; desde el
+    2026-09-02 se avisa a quien la siga teniendo. El motivo del cambio es de
+    conversión: quien llega desde Google buscando algo de tu nicho no vino a
+    ver competir a cuatro IAs, y encontrarse la meta-explicación antes que el
+    contenido le da un sitio del que irse. La transparencia no desaparece,
+    baja al pie — y que esté allí lo garantiza `_transparencia()`, que sí
+    bloquea.
+
+    Se mira en dos sitios, y hacen falta los dos: todo lo que va por encima
+    del primer `<h1>` (ahí vivía la barra de transparencia) y el `<header>`
+    entero (ahí vive el menú). Con solo el corte del `<h1>` se escapaba el
+    caso real de Gemini, que tiene el menú DEBAJO de su `<h1>` pero dentro
+    de la cabecera: sigue siendo lo primero que ve el visitante. El `<h1>`
+    hace de corte y no `<main>` porque las cuatro estructuraron su web
+    distinto y no todas usan `<main>`.
     """
     if "index.html" in archivos_nuevos:
         index = archivos_nuevos["index.html"]
@@ -313,15 +356,18 @@ def _jerarquia_portada(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[
         index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
     else:
         return []
-    for h2 in _RE_H2.findall(index):
-        if "gestiona una ia" in _texto_visible(h2).lower():
-            return [
-                "tu portada sigue con el bloque grande de transparencia "
-                "(<h2>) del esqueleto original, no la barra fina sin "
-                "titular que pide 'Jerarquía de portada y transparencia' "
-                "del prompt base. No bloquea el turno, pero se te repite "
-                "hasta que rehagas la portada."
-            ]
+    m = _RE_H1.search(index)
+    cabecera = (index[: m.start()] if m else "") + "".join(_RE_HEADER.findall(index))
+    if not cabecera:
+        return []
+    if _RE_ENLACE_LOG.search(cabecera) or _RE_UNA_IA.search(_texto_visible(cabecera)):
+        return [
+            "tu portada todavía enseña el experimento por encima del <h1> "
+            "(barra de transparencia o enlace al diario en el menú). Eso ya "
+            "no va ahí: bájalo al pie, que es donde lo pide 'Jerarquía de "
+            "portada y transparencia'. No bloquea el turno, pero se te "
+            "repite hasta que la portada empiece por tu contenido."
+        ]
     return []
 
 
@@ -384,6 +430,154 @@ def _pie_obligatorio(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
     return bloqueantes, avisos
 
 
+_RE_FORM = re.compile(r"<form\b.*?</form>", re.IGNORECASE | re.DOTALL)
+_RE_CAMPO_EMAIL = re.compile(r"""type=['"]email['"]""", re.IGNORECASE)
+_RE_METHOD_POST = re.compile(r"""method=['"]post['"]""", re.IGNORECASE)
+_RE_CAMPO_LISTA = re.compile(r"""name=['"]l['"]""", re.IGNORECASE)
+_RE_ONSUBMIT = re.compile(r"\bonsubmit=", re.IGNORECASE)
+ACTION_ALTA = "panel.retoseo.com/subscription/form"
+
+
+def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
+    """El formulario de suscripción, entero y conectado de verdad.
+
+    Hasta el 2026-09-02 esto solo estaba pedido en el prompt ("la IA no
+    cambia la acción/method, solo el texto y estilo visual") y no lo
+    comprobaba nada. Y el prompt solo no bastó, igual que no bastó con la
+    piel visual ni con la og:image: al revisar los cuatro sitios ese día,
+    **el formulario de Gemini era decorativo desde el día 0** —
+    `action="#"` con un `onsubmit` que hacía `preventDefault()` y enseñaba
+    un `alert` diciendo "Suscripción registrada en fase de prueba". Nunca
+    llegó un solo email a Listmonk, a nadie le llegó su doble opt-in, y
+    Gemini competía por una métrica que le era imposible marcar. Sin este
+    check no se habría visto hasta que alguien se quejara.
+
+    Es bloqueante y no aviso porque un alta perdida no se recupera: la
+    persona ya se fue creyendo que estaba suscrita. Y el turno de diseño,
+    que reescribe la portada entera cada miércoles, es justo el que más
+    fácil se lo lleva por delante.
+    """
+    bloqueantes, avisos = [], []
+    for ruta, contenido in sorted(archivos_nuevos.items()):
+        if not ruta.endswith(".html"):
+            continue
+        formularios = [f for f in _RE_FORM.findall(contenido) if _RE_CAMPO_EMAIL.search(f)]
+        if ruta == "index.html" and not formularios:
+            bloqueantes.append(
+                "index.html: se ha quedado sin formulario de suscripción. Los "
+                "suscriptores son la métrica que decide el experimento: una "
+                "portada sin formulario no puede puntuar")
+            continue
+        for f in formularios:
+            faltan = []
+            if ACTION_ALTA not in f:
+                faltan.append(f"el action a Listmonk (.../{ACTION_ALTA})")
+            if not _RE_METHOD_POST.search(f):
+                faltan.append('method="post"')
+            if not _RE_CAMPO_LISTA.search(f):
+                faltan.append('el campo oculto name="l" con tu id de lista')
+            if "attribs_origen" not in f:
+                faltan.append('el campo oculto name="attribs_origen"')
+            if "consentimiento" not in f:
+                faltan.append("la casilla de consentimiento obligatoria")
+            if "/privacidad" not in f:
+                faltan.append("el enlace a la política de privacidad")
+            if _RE_ONSUBMIT.search(f):
+                faltan.append("quitar el onsubmit: cancela el envío y deja el "
+                              "formulario de adorno")
+            if faltan:
+                bloqueantes.append(
+                    f"{ruta}: el formulario de alta no funciona, le falta "
+                    + "; ".join(faltan)
+                    + ". El diseño del formulario es tuyo; su fontanería no.")
+        if formularios and "attribs_origen" in contenido and "getElementById" not in contenido:
+            avisos.append(
+                f"{ruta}: está el campo attribs_origen pero no el script que lo "
+                f"rellena, así que toda alta se apuntará como 'directo' y no "
+                f"contará como orgánica — que es la única que puntúa")
+    return bloqueantes, avisos
+
+
+
+# 300 KB por imagen, tope duro pedido por Tato el 2026-09-01. Aplica a todo lo
+# que sirve el sitio, no solo a lo que genera la matriz: una foto pesada en una
+# pieza hunde el LCP en móvil, y el LCP es de los pocos factores de ranking
+# que Google admite en voz alta. Los SVG que dibujan las 4 andan por 1,3 KB, así
+# que esto no las estorba — está para el día que alguna pegue un PNG a pelo.
+MAX_BYTES_IMAGEN = 300 * 1024
+EXTENSIONES_IMAGEN = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".svg")
+
+
+def _peso_imagenes(repo_dir: Path) -> list[str]:
+    """Imágenes servidas por encima del tope. Se mira el disco y no
+    `archivos_nuevos` porque las imágenes son binarias y no viajan como texto
+    en el turno: llegan al repo por otra vía y hay que pesarlas donde están."""
+    errores = []
+    for ruta in repo_dir.rglob("*"):
+        if not ruta.is_file() or ".git" in ruta.parts:
+            continue
+        if ruta.suffix.lower() not in EXTENSIONES_IMAGEN:
+            continue
+        try:
+            tam = ruta.stat().st_size
+        except OSError:
+            continue
+        if tam > MAX_BYTES_IMAGEN:
+            rel = ruta.relative_to(repo_dir).as_posix()
+            errores.append(
+                f"{rel}: {tam // 1024} KB, por encima del tope de "
+                f"{MAX_BYTES_IMAGEN // 1024} KB por imagen — conviértela a WebP "
+                f"y bájale la calidad, o redibújala en SVG si es un diagrama")
+    return sorted(errores)
+
+
+_RE_CANONICAL = re.compile(r'<link[^>]+rel=["\']canonical["\']', re.IGNORECASE)
+
+# Aviso y no bloqueo, a propósito. En un sitio estático sin parámetros de
+# consulta el riesgo real de duplicado por falta de canonical es casi nulo, y
+# tumbarle el turno a las 4 por la página de privacidad sería desproporcionado.
+# Como aviso se les repite en el parte mecánico cada turno hasta que lo
+# arreglen, que es exactamente como Gemini se arregló sola la meta-description
+# que faltaba (2026-09-01).
+def _canonical(paginas: dict[str, str]) -> list[str]:
+    return sorted(f"{ruta}: sin <link rel=\"canonical\">"
+                  for ruta, html in paginas.items()
+                  if not _RE_CANONICAL.search(html))
+
+
+# 500 KB de página completa: el HTML más el CSS, JS e imágenes propios que
+# carga. Generoso a propósito — hoy sus páginas andan por decenas de KB y sus
+# SVG por 1,3 KB, así que esto no estorba a nadie que se porte bien. Está para
+# avisar el día que una pieza se llene de diagramas y nadie sume el total: cada
+# imagen puede cumplir el tope de 300 KB y aun así la página pesar 2 MB.
+MAX_BYTES_PAGINA = 500 * 1024
+
+
+def _peso_paginas(repo_dir: Path, paginas: dict[str, str]) -> list[str]:
+    avisos = []
+    for ruta, html in paginas.items():
+        total = len(html.encode("utf-8"))
+        vistos = set()
+        for url in _RE_HREF_SRC.findall(html):
+            if _es_enlace_externo(url):
+                continue
+            rel = url.split("#")[0].split("?")[0].lstrip("/")
+            if not rel or rel in vistos:
+                continue
+            vistos.add(rel)
+            f = repo_dir / rel
+            if f.is_file() and f.suffix.lower() in (
+                    ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"):
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    pass
+        if total > MAX_BYTES_PAGINA:
+            avisos.append(f"{ruta}: {total // 1024} KB con todo lo que carga, "
+                          f"por encima de {MAX_BYTES_PAGINA // 1024} KB — mira el LCP en móvil")
+    return sorted(avisos)
+
+
 def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     """archivos_nuevos: {ruta_relativa_posix: contenido_completo} — solo los
     ficheros que cambian este turno, ya con ruta_segura() verificada por el
@@ -415,8 +609,21 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     bloqueantes += b
     avisos += a
 
+    bloqueantes += _peso_imagenes(repo_dir)
+
+    avisos += _canonical(paginas)
+    avisos += _peso_paginas(repo_dir, paginas)
+
+    b, a = _transparencia(archivos_nuevos)
+    bloqueantes += b
+    avisos += a
+
+    b, a = _formulario_alta(archivos_nuevos)
+    bloqueantes += b
+    avisos += a
+
     avisos += _piel_visual(repo_dir, archivos_nuevos)
-    avisos += _jerarquia_portada(repo_dir, archivos_nuevos)
+    avisos += _diario_arriba(repo_dir, archivos_nuevos)
 
     return bloqueantes, avisos
 

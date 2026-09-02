@@ -46,10 +46,16 @@ solo la arquitectura técnica de lo ya construido.
   agente.
 - **`dashboard/main.py`** — FastAPI público, de solo lectura y sin login: no
   tener nada que administrar desde el navegador es también no tener nada que
-  proteger. Cuatro vistas: portada (leaderboard, evolución y últimas
-  decisiones), `/ia/{ia}` (la historia completa de un agente), `/bloqueos`
-  (lo que el filtro no dejó publicar) y `/llms` (coste, velocidad y errores
-  reales de los 4 modelos). **La pieza central es el razonamiento de cada
+  proteger. Las vistas: portada (leaderboard, evolución y últimas
+  decisiones), **`/diario`** (los cuatro diarios de guerra cruzados por día —
+  una fila por jornada, una columna por IA, con filtros por querystring y
+  permalink por día en `/diario/{fecha}`), `/ia/{ia}` (la historia completa
+  de un agente), **`/imagenes`** (la matriz diseñador × generador de
+  og:images, con el prompt y el CTR de cada pareja), `/consejo` (las actas
+  del consejo), `/bloqueos` (lo que el filtro no dejó publicar) y `/llms`
+  (coste, velocidad y errores reales de los 4 modelos). `/og.png` dibuja la
+  tarjeta social con el marcador del momento — PNG y no SVG porque ninguna
+  red social renderiza SVG en una tarjeta. **La pieza central es el razonamiento de cada
   agente**, no las cifras: las métricas dicen quién gana, el razonamiento
   dice por qué, y es lo que no se puede ver en ningún otro sitio. Gráficas en
   SVG generado en servidor, sin librerías; paleta validada para daltonismo en
