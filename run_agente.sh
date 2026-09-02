@@ -4,11 +4,12 @@
 # cron_agente.py a propósito: el Python ya está probado y lo que hace es
 # escribir+commitear en el repo; servirlo es cosa del despliegue.
 set -euo pipefail
-IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter]}"
+IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter|--diseno]}"
 shift || true
 
 TIPO="turno diario"
 [[ "$*" == *"--newsletter"* ]] && TIPO="newsletter semanal"
+[[ "$*" == *"--diseno"* ]] && TIPO="turno de diseño"
 
 # Aviso de control por Telegram (pedido por Tato para vigilar los 8 turnos
 # reales de las 4 IAs): lanzamiento al principio, éxito o fallo al final, vía
@@ -85,6 +86,12 @@ done || true
 # ejemplo del esqueleto, que nunca existe. og_image.py lo corrige al SVG
 # real que ya genera portada.py en cada turno (detectado el 2026-08-30).
 "$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/og_image.py "$IA" "$DESTINO"
+# El script que clasifica el origen del alta: se repone después del
+# despliegue porque el agente reescribe su index.html entera cada turno y
+# el 2026-09-02 un rediseño se lo llevó por delante dejando el campo
+# huérfano. Sin él toda alta se apunta como "directo" y ninguna cuenta
+# como orgánica, que es la única que puntúa — y no se reconstruye después.
+"$PWD/venv/bin/python" /root/ai-seo-battle-dashboard/origen_alta.py "$IA" "$DESTINO"
 chown -R root:caddy "$DESTINO"
 
 # Aviso a los buscadores que consumen IndexNow (Bing, Yandex, Seznam, Naver).
