@@ -490,6 +490,34 @@ def fmt_eficiencia(cps) -> str:
     return f"{cps:.2f}$" if cps >= 1 else f"{cps*100:.2f}¢"
 
 
+def fmt_tokens(n) -> str:
+    """En una ficha no cabe "1234567" y tampoco aporta nada esa precisión:
+    lo que importa de un lado a otro es el orden de magnitud."""
+    n = n or 0
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n/1_000:.0f}k"
+    return str(n)
+
+
+def _desglose_modelos(pares: list[tuple[str, int]]) -> str:
+    """% de turnos que fue a cada modelo, agrupado por nombre corto (el id
+    exacto lleva la fecha de release pegada y separaría el mismo modelo en
+    dos filas). Es el tiering barato/flagship ya decidido en el diseño del
+    proyecto hecho visible: cuánto de lo diario cae en el modelo barato
+    frente a lo poco que va al flagship de la newsletter semanal."""
+    total = sum(n for _, n in pares)
+    if not total:
+        return ""
+    agregado: dict[str, int] = {}
+    for modelo, n in pares:
+        corto = _modelo_corto(modelo) or modelo
+        agregado[corto] = agregado.get(corto, 0) + n
+    ordenado = sorted(agregado.items(), key=lambda x: -x[1])
+    return " · ".join(f"{esc(m)} {n/total*100:.0f}%" for m, n in ordenado)
+
+
 def tarjeta_decision(ev, mostrar_ia: bool = True, bloqueada: bool = False) -> str:
     cuando = esc((ev["timestamp"] or "")[:16].replace("T", " "))
     cabecera = []
@@ -582,6 +610,7 @@ def tarjeta_decision(ev, mostrar_ia: bool = True, bloqueada: bool = False) -> st
 def _datos_comunes(conn):
     agregados = {r["ia"]: r for r in conn.execute(
         "SELECT ia, COUNT(*) n, SUM(coste_estimado) coste,"
+        " SUM(tokens_in) tokens_in, SUM(tokens_out) tokens_out,"
         " SUM(CASE WHEN resultado='error' THEN 1 ELSE 0 END) errores"
         " FROM activity_log GROUP BY ia")}
     ultimos = {r["ia"]: r for r in conn.execute(
@@ -616,6 +645,12 @@ def home():
         "SELECT * FROM activity_log WHERE resultado != 'error' OR resultado IS NULL"
         " ORDER BY timestamp DESC LIMIT 12"
     ).fetchall()
+    por_modelo_ia: dict[str, list[tuple[str, int]]] = {}
+    for r in conn.execute(
+        "SELECT ia, modelo_exacto, COUNT(*) n FROM activity_log"
+        " WHERE modelo_exacto IS NOT NULL GROUP BY ia, modelo_exacto"
+    ):
+        por_modelo_ia.setdefault(r["ia"], []).append((r["modelo_exacto"], r["n"]))
     historico = conn.execute(
         "SELECT ia, fecha, suscriptores_organicos, clics_gsc FROM metrics_snapshot ORDER BY fecha"
     ).fetchall()
@@ -669,13 +704,29 @@ def home():
     # historia aquí dentro y su web de verdad fuera. Un <a> dentro de otro <a>
     # no es HTML válido y los navegadores lo resuelven como les parece.
     dominio = _dominio()
+
+    def _ficha_met(ia: str) -> str:
+        a = agregados.get(ia)
+        n = a["n"] if a else 0
+        coste = (a["coste"] if a else 0) or 0
+        lineas = [f'<div class="met">{n} decisiones · {coste:.2f}$ gastados</div>']
+        tok_in = (a["tokens_in"] if a else 0) or 0
+        tok_out = (a["tokens_out"] if a else 0) or 0
+        if tok_in or tok_out:
+            lineas.append(
+                f'<div class="met">{esc(fmt_tokens(tok_in))} in / {esc(fmt_tokens(tok_out))} out tokens</div>'
+            )
+        desglose = _desglose_modelos(por_modelo_ia.get(ia, []))
+        if desglose:
+            lineas.append(f'<div class="met">{desglose}</div>')
+        return "".join(lineas)
+
     fichas = "".join(
         f'<div class="ficha">'
         f'<a class="ficha-t" href="/ia/{ia}"><span class="nombre">'
         f'<span class="chip" style="background:{color(ia)}"></span>{esc(etiqueta(ia))}</span>'
         f'<div class="lema">{esc(lema(ia))}</div>'
-        f'<div class="met">{(agregados[ia]["n"] if ia in agregados else 0)} decisiones · '
-        f'{((agregados[ia]["coste"] if ia in agregados else 0) or 0):.2f}$ gastados</div></a>'
+        f'{_ficha_met(ia)}</a>'
         + (f'<a class="ficha-web" href="https://{ia}.{dominio}">{ia}.{dominio} &#8599;</a>'
            if dominio else "")
         + '</div>'
@@ -1048,13 +1099,17 @@ def _fecha_corta(f: str) -> str:
         return f
 
 
+_RE_FECHA_MODELO = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{8}$")
+
+
 def _modelo_corto(m: str | None) -> str:
-    """El id exacto lleva la fecha de release pegada (…-4-5-20251001) y en una
-    celda de tabla eso es media línea gastada en algo que no distingue nada:
-    dentro de una misma IA todos sus modelos comparten esa cola."""
+    """El id exacto lleva la fecha de release pegada, pegada (…-4-5-20251001)
+    o con guiones (…-mini-2026-03-17) según la casa, y en una celda de tabla
+    eso es media línea gastada en algo que no distingue nada: dentro de una
+    misma IA todos sus modelos comparten esa cola."""
     if not m:
         return ""
-    return re.sub(r"-\d{8}$", "", m)
+    return _RE_FECHA_MODELO.sub("", m)
 
 
 def _corto(t: str | None, n: int = 105) -> str:
