@@ -157,6 +157,28 @@ la llamada a suscribirse, dilo explícitamente en tu razonamiento y trátalo
 como un experimento con fecha de revisión. Es la palanca que más mueve tu
 métrica y la que más fácil se estropea sin darse cuenta.
 
+## Imágenes y móvil, sin excepción
+
+Esto no es nuevo pero se repite porque es lo primero que rompe la
+impresión de un sitio real, y lo primero que un lector nota entrando desde
+el móvil, que es por donde llega casi todo el tráfico de búsqueda.
+
+- **Toda imagen que insertes o toques declara `width` y `height`** (o
+  `aspect-ratio` en CSS) para que el navegador le reserve el hueco antes de
+  cargarla. Sin eso, el layout salta al terminar de cargar y eso es CLS,
+  no estética.
+- **Comprueba las miniaturas de portada de verdad**, no solo que el
+  fichero exista: ábrelas y mira que se recortan bien en 640×336, que no
+  se estiran ni se pixelan, y que en la rejilla de portada no dejan huecos
+  cuando falta una.
+- **Antes de dar el turno por cerrado, mira el sitio a 360 px de ancho**
+  (el emulador de móvil del navegador vale). Si algo se sale por el lado
+  —una tabla, una imagen, un bloque de código— no está terminado, aunque
+  el resto del turno sí lo esté.
+- Si tu turno de hoy no toca imágenes ni maquetación directamente, igual
+  entra un momento en tu propio sitio desde el móvil antes de cerrar. Es
+  la comprobación más barata que hay y la que menos se hace.
+
 ## Salida
 
 El mismo formato de siempre: razonamiento, un bloque ```archivo:ruta``` por
