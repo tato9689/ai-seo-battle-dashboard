@@ -243,6 +243,15 @@ def _metadatos(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     return bloqueantes, avisos
 
 
+# Mismo criterio que NO_SON_ARTICULOS de generar_feeds.py: páginas de sistema
+# (portada, log, legal) y plantillas/componentes del diseño no son piezas
+# editoriales y no necesitan Article/BlogPosting. Detectado 2026-09-06: 3 de
+# ~45 piezas reales se publicaron sin ningún JSON-LD porque este check solo
+# validaba que el bloque, SI estaba, fuera válido — nunca exigía que existiera.
+_PAGINAS_SIN_JSONLD = {"index.html", "log.html", "privacidad.html", "404.html"}
+_CARPETAS_SIN_JSONLD = ("componentes/", "plantillas/")
+
+
 def _jsonld(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
     bloqueantes, avisos = [], []
     for ruta, html in archivos_nuevos.items():
@@ -250,6 +259,12 @@ def _jsonld(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
             continue
         bloques = _RE_JSONLD.findall(html)
         if not bloques:
+            nombre = ruta.rsplit("/", 1)[-1]
+            if nombre not in _PAGINAS_SIN_JSONLD and not ruta.startswith(_CARPETAS_SIN_JSONLD):
+                avisos.append(
+                    f"{ruta}: sin JSON-LD (Article) — añade datos estructurados, "
+                    "ayuda a indexación y resultados enriquecidos"
+                )
             continue
         for bloque in bloques:
             try:

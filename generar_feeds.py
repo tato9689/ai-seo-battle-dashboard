@@ -23,6 +23,16 @@ RE_META_DESC = re.compile(
 NO_SON_ARTICULOS = {"index.html", "log.html", "privacidad.html", "404.html"}
 FUERA_DEL_SITEMAP = {"privacidad.html", "404.html"}
 
+# Carpetas de infraestructura (plantillas/componentes del sistema de diseño,
+# no piezas editoriales) que alguna IA puede decidir meter dentro del árbol
+# servido. Detectado 2026-09-06: deepseek publicó `/componentes/` y
+# `/plantillas/` ahí, y como este generador no las excluía, un sitemap
+# recorriendo TODO el .html del repo (línea de abajo) las mandó a Google como
+# si fueran contenido — una de ellas encima marcada noindex en su propio
+# <head>, contradicción que Search Console reporta como ruido de cobertura.
+CARPETAS_SIN_CONTENIDO = ("componentes/", "plantillas/")
+RE_ROBOTS_NOINDEX = re.compile(r'<meta\s+name=["\']robots["\'][^>]*noindex', re.IGNORECASE)
+
 
 def _url_publica(base_url: str, rel: str) -> str:
     """index.html -> /  ·  guia-x.html -> /guia-x  (URLs limpias, sin .html)"""
@@ -39,7 +49,11 @@ def _paginas(repo_dir: Path) -> list[tuple[str, str, str, datetime]]:
         rel = ruta.relative_to(repo_dir).as_posix()
         if rel.startswith(".") or "/." in rel:
             continue
+        if rel.startswith(CARPETAS_SIN_CONTENIDO):
+            continue
         contenido = ruta.read_text(encoding="utf-8", errors="ignore")
+        if RE_ROBOTS_NOINDEX.search(contenido):
+            continue
         m = RE_TITLE.search(contenido)
         titulo = m.group(1).strip() if m else rel
         m = RE_META_DESC.search(contenido)
