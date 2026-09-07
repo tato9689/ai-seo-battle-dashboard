@@ -36,6 +36,16 @@ from db import get_conn  # noqa: E402
 CONFIG_PATH = BASE / "config.json"
 
 UMBRAL_DEGRADAR = 0.80
+# Simétrico al freno de arriba: si vas por debajo de la mitad de lo que
+# tocaría al ritmo lineal (gastado/tope vs día del mes/días del mes), se
+# empuja el modelo potente. Sin esto el tope es solo un techo que nunca se
+# toca: el gasto real se queda muy por debajo (visto de verdad en
+# 2026-09, día 7 de 30, con el 6-11% de los botes gastado cuando el ritmo
+# lineal pedía el 23%) porque nada empuja a gastar, solo a no pasarse.
+# Decidido con Tato el 2026-09-07: el objetivo pasa a ser agotar el bote
+# cada mes, no ahorrarlo — ahorrar sistemáticamente no puntúa nada.
+UMBRAL_IMPULSAR = 0.5
+DIA_MINIMO_IMPULSAR = 3  # no reaccionar al ruido de los primeros días del mes
 TOPE_POR_DEFECTO = 5.0  # €/mes por API, el acordado para el experimento
 # Los costes se estiman en dólares (así los publican los 4 proveedores) y el
 # tope se fija en euros. Se aplica una conversión aproximada y conservadora:
@@ -100,8 +110,13 @@ def gasto_del_mes(ia: str, hoy: date | None = None, tipo: str = "normal") -> flo
 
 def estado(ia: str, cfg: dict | None = None, hoy: date | None = None,
            tipo: str = "normal") -> dict:
-    """{gastado, tope, fraccion, permitir, degradar, motivo} del bote que toca."""
+    """{gastado, tope, fraccion, permitir, degradar, impulsar, motivo} del
+    bote que toca. `impulsar` es lo simétrico de `degradar`: en vez de
+    frenar el modelo caro cerca del tope, empuja a usarlo cuando el gasto
+    real va muy por detrás del ritmo que hace falta para agotar el bote
+    a fin de mes."""
     cfg = cfg or cargar_config()
+    hoy = hoy or date.today()
     tope = tope_mensual(cfg, ia, tipo)
     gastado = gasto_del_mes(ia, hoy, tipo)
     fraccion = (gastado / tope) if tope > 0 else 0.0
@@ -109,18 +124,29 @@ def estado(ia: str, cfg: dict | None = None, hoy: date | None = None,
     if fraccion >= 1.0:
         return {
             "gastado": gastado, "tope": tope, "fraccion": fraccion,
-            "permitir": False, "degradar": True,
+            "permitir": False, "degradar": True, "impulsar": False,
             "motivo": f"tope mensual alcanzado ({gastado:.2f}€ de {tope:.2f}€)",
         }
     if fraccion >= UMBRAL_DEGRADAR:
         return {
             "gastado": gastado, "tope": tope, "fraccion": fraccion,
-            "permitir": True, "degradar": True,
+            "permitir": True, "degradar": True, "impulsar": False,
             "motivo": f"{fraccion:.0%} del tope gastado, se usa el modelo barato",
         }
+
+    dias_mes = calendar.monthrange(hoy.year, hoy.month)[1]
+    dia = min(hoy.day, dias_mes)
+    ritmo_fraccion = dia / dias_mes
+    impulsar = dia >= DIA_MINIMO_IMPULSAR and fraccion < ritmo_fraccion * UMBRAL_IMPULSAR
+    motivo = (
+        f"vas muy por detrás del ritmo para agotar el bote este mes "
+        f"({fraccion:.0%} gastado con el {ritmo_fraccion:.0%} del mes corrido), "
+        "se usa el modelo potente"
+    ) if impulsar else ""
     return {
         "gastado": gastado, "tope": tope, "fraccion": fraccion,
-        "permitir": True, "degradar": False, "motivo": "",
+        "permitir": True, "degradar": False, "impulsar": impulsar,
+        "motivo": motivo,
     }
 
 
@@ -145,6 +171,7 @@ def contexto_para_agente(ia: str, modelos: dict, precios: dict, cfg: dict | None
         "tope_mensual_eur": e["tope"],
         "queda_eur": round(max(e["tope"] - e["gastado"], 0), 3),
         "vas_por_delante_del_ritmo": bool(e["gastado"] > esperado),
+        "vas_muy_por_detras_del_ritmo": e["impulsar"],
         "dias_hasta_reinicio_del_tope": dias_hasta_reinicio,
         "modelos_disponibles": {
             "barato": {
@@ -157,12 +184,24 @@ def contexto_para_agente(ia: str, modelos: dict, precios: dict, cfg: dict | None
             },
         },
         "nota": ("Eliges tú con cuál trabajar en tu PRÓXIMO turno, con el campo "
-                 "modelo_siguiente. Si agotas el tope, no se te llama en lo que "
-                 "queda de mes y pierdes turnos. El tope es mensual y NO se "
-                 "acumula: lo que no gastes en 'queda_eur' antes de "
-                 "dias_hasta_reinicio_del_tope no pasa al mes siguiente, se "
-                 "pierde sin más. Si quedan pocos días, ahorrar ya no tiene "
-                 "premio — gasta acorde a lo que de verdad mejore tu turno."),
+                 "modelo_siguiente. El objetivo del experimento es agotar tu "
+                 "bote cada mes, no ahorrarlo: llegar a fin de mes con "
+                 "'queda_eur' alto no es un acierto de gestión, es presupuesto "
+                 "desperdiciado que no pasa al mes siguiente — se pierde sin "
+                 "más. Por defecto inclínate por el modelo potente salvo que "
+                 "tengas una razón concreta para el barato ese turno (no "
+                 "'por ahorrar'). Si vas cerca del tope (80% o más), "
+                 "el sistema ya te fuerza el barato para no quedarte sin "
+                 "turnos, así que no hace falta que frenes tú antes. Y si "
+                 "'vas_muy_por_detras_del_ritmo' es true, el sistema te "
+                 "fuerza el potente en este turno aunque hubieras pedido el "
+                 "barato — mejor que lo elijas tú mismo el próximo antes de "
+                 "que haga falta. Esto NO es licencia para inflar el número "
+                 "de piezas o rellenar contenido: el estándar de calidad es "
+                 "el mismo de siempre, el gasto tiene que venir de currarte "
+                 "turnos reales con el modelo capaz, no de publicar más por "
+                 "publicar. Si agotas el tope antes de fin de mes, no se te "
+                 "llama en lo que queda y pierdes turnos enteros."),
     }
 
 

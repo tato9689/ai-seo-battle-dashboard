@@ -958,10 +958,17 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
     tier = tier_elegido(repo_dir, por_defecto="diaria" if not (newsletter or diseno) else "semanal",
                         solo_tipo="diseno" if diseno else None)
     if presu["degradar"] and tier == "semanal":
-        # Único caso en que el sistema le pisa la elección: cerca del tope,
-        # una newsletter con el modelo pequeño es mejor que quedarse sin turnos.
+        # Cerca del tope: una newsletter con el modelo pequeño es mejor que
+        # quedarse sin turnos.
         print(f"[{ia}] {presu['motivo']}")
         tier = "diaria"
+    elif presu["impulsar"] and tier == "diaria":
+        # Simétrico al freno de arriba: si el gasto real va muy por detrás
+        # del ritmo que hace falta para agotar el bote a fin de mes, se le
+        # pisa la elección al revés — el tope es un objetivo a alcanzar,
+        # no solo un techo a no cruzar (decidido con Tato el 2026-09-07).
+        print(f"[{ia}] {presu['motivo']}")
+        tier = "semanal"
 
     # Se calcula el tier ANTES de construir el prompt para poder decírselo tal
     # cual: modelo_siguiente solo decide el PRÓXIMO turno, así que sin esta
@@ -1016,7 +1023,49 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         print(f"[{ia}] {texto}")
         return
 
+    ya_reintentado = False
+
+    def reintentar(problema: str) -> None:
+        """Un segundo intento dentro del MISMO turno cron, como mucho uno.
+        Antes, un fallo de formato (JSON ilegible o un archivo listado sin
+        su bloque de contenido) se daba por perdido hasta el turno de
+        mañana — que ni siquiera retoma el mismo tema, porque parte del
+        sitio desde cero otra vez. Pasó de verdad con Gemini el
+        2026-09-06: anunció publicado un artículo
+        ('extrac-yield-balance-fisica') que nunca llegó a escribirse.
+        Reutiliza el mismo contexto (`user`) para que no pierda de vista
+        qué tenía que hacer, y el coste del reintento se suma al del
+        intento original: sigue siendo un turno de cron, no dos."""
+        nonlocal resultado, texto, ya_reintentado
+        ya_reintentado = True
+        print(f"[{ia}] {problema} — reintento una vez en el mismo turno.", file=sys.stderr)
+        extra = llamar_con_metadata(
+            ia, system,
+            f"{user}\n\n---\n\n"
+            f"Tu respuesta anterior en este MISMO turno no se pudo aplicar: {problema}\n\n"
+            f"Tu respuesta anterior completa, para que la tengas a mano:\n{texto}\n\n"
+            "Repite tu respuesta completa y correcta: el mismo bloque JSON "
+            "(mismo accion_tipo y output_resumen si siguen siendo ciertos) y, "
+            "para CADA ruta que listes en \"archivos\", su bloque "
+            "```archivo:esa-ruta``` con el contenido completo — no lo resumas "
+            "ni digas \"sin cambios\", incluye el HTML/CSS entero. Si de "
+            "verdad no puedes completarlo esta vez, usa "
+            "\"accion_tipo\": \"esperar-mas-datos\" y explica por qué.",
+            tier=tier, modelo=resultado["modelo"],
+        )
+        resultado = {
+            **resultado,
+            "texto": extra["texto"],
+            "tokens_in": (resultado.get("tokens_in") or 0) + (extra.get("tokens_in") or 0),
+            "tokens_out": (resultado.get("tokens_out") or 0) + (extra.get("tokens_out") or 0),
+            "duracion_seg": (resultado.get("duracion_seg") or 0) + (extra.get("duracion_seg") or 0),
+        }
+        texto = resultado["texto"]
+
     datos = extraer_bloque_json(texto)
+    if datos is None and not dry_run:
+        reintentar("la respuesta no traía ningún bloque JSON parseable")
+        datos = extraer_bloque_json(texto)
     if datos is None:
         print(f"[{ia}] no se pudo parsear el bloque JSON de la respuesta — no se aplica nada.", file=sys.stderr)
         print(texto)
@@ -1042,14 +1091,19 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "input_contexto": ctx,
             "razonamiento": texto[:4000],
             "accion_tipo": None,
-            "output_resumen": "el turno no se publicó: la respuesta no traía un bloque JSON válido",
+            "output_resumen": (
+                "el turno no se publicó ni tras reintentarlo: la respuesta no "
+                "traía un bloque JSON válido" if ya_reintentado else
+                "el turno no se publicó: la respuesta no traía un bloque JSON válido"
+            ),
             "output_url": None,
             "tokens_in": resultado["tokens_in"],
             "tokens_out": resultado["tokens_out"],
             "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
             "duracion_seg": resultado["duracion_seg"],
             "resultado": "error",
-            "detalle_error": "no se pudo parsear el bloque JSON de la respuesta",
+            "detalle_error": "no se pudo parsear el bloque JSON de la respuesta"
+                              + (" (tras reintentarlo una vez)" if ya_reintentado else ""),
         })
         git_commit(repo_dir, "log: registra intento sin JSON parseable")
         return
@@ -1083,10 +1137,26 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
     rutas = datos.get("archivos", [])
     bloques_archivo = extraer_bloques_archivo(texto)
     faltantes = [r for r in rutas if r not in bloques_archivo]
+    if faltantes and not ya_reintentado:
+        # Es justo el fallo real visto con Gemini el 2026-09-06: el JSON
+        # lista una ruta y el resumen dice "publicado", pero no hay bloque
+        # ```archivo:esa-ruta``` con el contenido — se recupera dentro del
+        # mismo turno en vez de darlo por perdido hasta mañana.
+        reintentar(
+            "listaste estos archivos en \"archivos\" pero no incluiste su "
+            f"bloque ```archivo:``` con el contenido: {faltantes}"
+        )
+        datos_reintento = extraer_bloque_json(texto)
+        if datos_reintento is not None:
+            datos = datos_reintento
+            razonamiento = razonamiento_sin_json(texto)
+            print(f"[{ia}] (reintento) {datos.get('accion_tipo')}: {datos.get('output_resumen')}")
+        rutas = datos.get("archivos", [])
+        bloques_archivo = extraer_bloques_archivo(texto)
+        faltantes = [r for r in rutas if r not in bloques_archivo]
     if faltantes:
-        # El JSON lista una ruta pero no hay bloque ```archivo:esa-ruta```
-        # que le corresponda — mismo tratamiento que un JSON sin parsear:
-        # se registra como error visible, no se aplica nada a medias.
+        # Mismo tratamiento que un JSON sin parsear: se registra como error
+        # visible, no se aplica nada a medias.
         print(f"[{ia}] archivos listados sin bloque ```archivo:``` correspondiente: {faltantes} — no se aplica nada.", file=sys.stderr)
         registrar_evento(repo_dir, {
             "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
@@ -1096,14 +1166,19 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "input_contexto": ctx,
             "razonamiento": razonamiento,
             "accion_tipo": datos.get("accion_tipo"),
-            "output_resumen": "el turno no se publicó: faltan bloques ```archivo:``` para rutas listadas en el JSON",
+            "output_resumen": (
+                "el turno no se publicó ni tras reintentarlo: faltan bloques "
+                "```archivo:``` para rutas listadas en el JSON" if ya_reintentado else
+                "el turno no se publicó: faltan bloques ```archivo:``` para rutas listadas en el JSON"
+            ),
             "output_url": None,
             "tokens_in": resultado["tokens_in"],
             "tokens_out": resultado["tokens_out"],
             "coste_estimado": coste_estimado(resultado["modelo"], resultado["tokens_in"], resultado["tokens_out"]),
             "duracion_seg": resultado["duracion_seg"],
             "resultado": "error",
-            "detalle_error": f"rutas sin bloque archivo: correspondiente: {faltantes}",
+            "detalle_error": f"rutas sin bloque archivo: correspondiente: {faltantes}"
+                              + (" (tras reintentarlo una vez)" if ya_reintentado else ""),
         })
         git_commit(repo_dir, "log: registra intento con archivos sin bloque correspondiente")
         return

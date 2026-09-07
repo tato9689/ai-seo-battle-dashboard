@@ -98,6 +98,9 @@ ESTILO = """
     @keyframes latido { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
   }
 
+  .dos-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px 24px; margin-top: 14px; }
+  .dos-col h3 { font-size: .95rem; margin: 0 0 6px; color: var(--text-2); }
+
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; margin-top: 18px; }
   .tile { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
   .tile .n { display: block; font-size: 1.65rem; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -654,6 +657,12 @@ def home():
     historico = conn.execute(
         "SELECT ia, fecha, suscriptores_organicos, clics_gsc FROM metrics_snapshot ORDER BY fecha"
     ).fetchall()
+    gasto_diario = conn.execute(
+        "SELECT ia, DATE(timestamp) fecha, SUM(coste_estimado) coste,"
+        " SUM(tokens_in) tokens_in, SUM(tokens_out) tokens_out"
+        " FROM activity_log WHERE coste_estimado IS NOT NULL"
+        " GROUP BY ia, DATE(timestamp) ORDER BY fecha"
+    ).fetchall()
     dias = conn.execute("SELECT COUNT(DISTINCT fecha) d FROM metrics_snapshot").fetchone()["d"]
     n_bloqueos = conn.execute(
         "SELECT COUNT(*) n FROM activity_log WHERE resultado='error'").fetchone()["n"]
@@ -698,6 +707,18 @@ def home():
         for r in historico:
             if r[campo] is not None:
                 out.setdefault(r["ia"], []).append((r["fecha"], r[campo]))
+        return out
+
+    def serie_acumulada(valor):
+        """Como serie(), pero sumando día a día: el gasto y los tokens no
+        vuelven a bajar, así que la línea siempre sube — igual que se lee el
+        gasto acumulado en cualquier otro sitio del dashboard."""
+        acumulado: dict[str, float] = {}
+        out: dict[str, list[tuple[str, float]]] = {}
+        for r in gasto_diario:
+            ia = r["ia"]
+            acumulado[ia] = acumulado.get(ia, 0) + valor(r)
+            out.setdefault(ia, []).append((r["fecha"], acumulado[ia]))
         return out
 
     # La tarjeta deja de ser un único <a> para poder llevar dos destinos: su
@@ -788,6 +809,16 @@ gana quien convence barato, no quien más publica.</p>
 <h2>Los cuatro</h2>
 <p class="hint">Cada una eligió su nicho y su personalidad. Pulsa la tarjeta para ver su historia completa, o el enlace de abajo para visitar la web que gestiona.</p>
 <div class="fichas">{fichas}</div>
+
+<h2>Evolución: gasto en API</h2>
+{grafica_lineas(serie_acumulada(lambda r: r["coste"] or 0), "Gasto acumulado ($)")}
+
+<h2>Evolución: tokens consumidos</h2>
+<p class="hint">Lo que se le manda a cada modelo (entrada) y lo que devuelve (salida), acumulados desde el inicio.</p>
+<div class="dos-col">
+<div><h3>Entrada (in)</h3>{grafica_lineas(serie_acumulada(lambda r: r["tokens_in"] or 0), "Tokens de entrada acumulados")}</div>
+<div><h3>Salida (out)</h3>{grafica_lineas(serie_acumulada(lambda r: r["tokens_out"] or 0), "Tokens de salida acumulados")}</div>
+</div>
 
 <h2>Evolución: suscriptores orgánicos</h2>
 {grafica_lineas(serie("suscriptores_organicos"), "Suscriptores orgánicos")}

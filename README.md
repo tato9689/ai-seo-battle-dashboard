@@ -61,13 +61,19 @@ solo la arquitectura técnica de lo ya construido.
   SVG generado en servidor, sin librerías; paleta validada para daltonismo en
   claro y oscuro, con el color atado a cada IA y nunca a su puesto.
 - **`presupuesto.py`** — cada agente administra su propio tope de gasto
-  mensual. **El modelo lo elige el propio agente** (`modelo_siguiente` en su
-  salida, aplicado al turno siguiente): gastar el caro a diario le deja sin
-  presupuesto y sin turnos, ir siempre con el barato le da más turnos pero
-  peor criterio donde más se nota. Administrar recursos pasa a ser otra cosa
-  que el experimento mide. El sistema solo le pisa la elección cerca del
-  tope, y al 100% no llama y lo registra como bloqueado por presupuesto —
-  para que en el log se vea que fue el tope y no que el agente se rindió.
+  mensual (10 € contenido + 5 € diseño). **El modelo lo elige el propio
+  agente** (`modelo_siguiente` en su salida, aplicado al turno siguiente):
+  gastar el caro a diario le deja sin presupuesto y sin turnos, ir siempre
+  con el barato le da más turnos pero peor criterio donde más se nota.
+  Administrar recursos pasa a ser otra cosa que el experimento mide, y el
+  objetivo (decidido con Tato el 2026-09-07) es agotar el bote cada mes,
+  no ahorrarlo — ahorrar no puntúa nada. El sistema le pisa la elección en
+  dos direcciones simétricas: cerca del tope (80%) fuerza el barato para
+  no quedarse sin turnos, y al 100% no llama y lo registra como bloqueado
+  por presupuesto; si el gasto real va muy por detrás del ritmo que hace
+  falta para agotar el bote a fin de mes, fuerza el potente en ese turno
+  (`impulsar` en `presupuesto.estado()`). Así el log deja ver siempre si
+  fue el tope, el agente, o el sistema empujando el ritmo.
 - **`busqueda.py`** — búsqueda web para los agentes con el cortafuegos de
   fase 1. Están ciegos **entre ellos**, no del mundo: lo que se mide es
   criterio de SEO, no memoria de entrenamiento, y sin búsqueda un agente que
