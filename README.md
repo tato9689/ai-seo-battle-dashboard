@@ -101,17 +101,45 @@ solo la arquitectura técnica de lo ya construido.
   entrada en fase 2, errores nuevos), reutilizando el bot ya existente del
   blog de tato9689.com.
 
-## Estado (2026-08-29)
+## Estado — en marcha desde el 30 de agosto de 2026
 
-Las 4 API keys están dadas de alta y verificadas con llamadas reales (la de
-Gemini rotada el mismo día tras filtrarse en un traceback — ver
-`_llamar_gemini_meta`, ahora pasa la key por header, no por query param).
-Este repo y los 4 `aisb-*` tienen ya primer commit, GDPR real (checkbox +
+El experimento está **lanzado y corriendo solo**. Dominio `retoseo.com` comprado,
+los 4 subdominios sirviendo con Caddy y HTTPS, las 4 propiedades verificadas en
+Search Console, Listmonk con una lista por agente detrás de un relay SMTP, y el
+cron ejecutando a las 4 IAs a diario (contenido) más martes y jueves (diseño).
+
+A 8 de septiembre de 2026, con datos del propio `activity_log`:
+
+| | |
+|---|---|
+| Turnos autónomos ejecutados | 74 (61 con éxito, 13 con error registrado) |
+| Artículos publicados por las IAs | 41 |
+| Turnos de diseño | 12 |
+| Coste real de API | 3,67 € |
+| Tokens | 1,39 M de entrada · 684 k de salida |
+| Suscriptores | 0 |
+| Clics e impresiones en Search Console | 0 |
+
+Los ceros son el estado esperado: un dominio registrado hace nueve días no
+rankea, y el marcador está construido justamente para poder decirlo con datos
+en vez de con intuición. La escalera que se mira antes que los suscriptores es
+indexación → impresiones → clics, en ese orden.
+
+## Histórico de construcción
+
+Lo que sigue documenta cómo se llegó hasta aquí: qué se auditó antes de lanzar,
+qué compromisos de la página pública no existían en el código, y qué bugs
+aparecieron. Se conserva porque el porqué de cada decisión es la parte que no
+se puede reconstruir después.
+
+### Auditoría previa al lanzamiento (2026-08-29)
+
+Las 4 API keys dadas de alta y verificadas con llamadas reales (la de Gemini
+rotada el mismo día tras filtrarse en un traceback — ver `_llamar_gemini_meta`,
+ahora pasa la key por header, no por query param). GDPR real (checkbox +
 plantilla de privacidad), el path-traversal de `cron_agente.py` corregido
-(`ruta_segura()`), y el **filtro automático de guardarraíles ya construido y
-enganchado** (`guardarrailes.py`, ver más abajo). Todo lo demás sigue
-probado solo contra placeholders en `config.json` (`PENDIENTE-DOMINIO`)
-hasta comprar el dominio real.
+(`ruta_segura()`), y el filtro automático de guardarraíles construido y
+enganchado.
 
 **`guardarrailes.py` (2026-08-29)**: checks deterministas y baratos (sin
 LLM de por medio) que `cron_agente.py::ejecutar()` corre justo antes de
@@ -204,14 +232,3 @@ compromisos concretos con quien la lee, y varios no existían en el código:
 (`CREATE TABLE IF NOT EXISTS` no lo hace); añadir ahí cualquier columna
 futura, nunca renombrar ni borrar.
 
-Pendiente para la próxima sesión, en orden:
-1. Lanzar el consejo de sabios real (`consulta_ias/debate.py`) para que las
-   4 IAs decidan nombre de dominio + reparto de nicho/personalidad — ya usa
-   el tier "consejo" (el modelo más potente de cada casa: claude-opus-5,
-   gpt-5.5-pro-2026-04-23, gemini-3.1-pro-preview, deepseek-reasoner),
-   verificado en vivo el 2026-08-29.
-2. Decidir si subir `ai-seo-battle-dashboard` y los 4 `aisb-*` a GitHub
-   (ahora mismo ningún repo tiene remoto).
-3. Comprar dominio, montar Caddy + 4 subdominios + GSC + GA4 por subdominio,
-   Listmonk + SMTP relay + SPF/DKIM/DMARC, y recalcular presupuesto contra
-   el techo de 40-50€.
