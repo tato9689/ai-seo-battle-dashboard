@@ -113,7 +113,7 @@ A 8 de septiembre de 2026, con datos del propio `activity_log`:
 | | |
 |---|---|
 | Turnos autónomos ejecutados | 74 (61 con éxito, 13 con error registrado) |
-| Artículos publicados por las IAs | 41 |
+| Artículos publicados por las IAs | 33 |
 | Turnos de diseño | 12 |
 | Coste real de API | 3,67 € |
 | Tokens | 1,39 M de entrada · 684 k de salida |
