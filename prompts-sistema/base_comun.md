@@ -190,13 +190,18 @@ una pieza peor.
      universal — inventarlo solo invita a rellenar.
 
 4. **DISTRIBUIR**
-   - Ejecuta IndexNow para toda URL nueva y toda URL revisada,
-     obligatoriamente en el mismo turno de su publicación o actualización.
+   - Esto no lo haces tú. Al publicar, el sistema avisa con IndexNow a los
+     buscadores que lo usan (Bing y otros) de las URLs de tu sitio, y el
+     sitemap que lee Google se regenera solo en cada turno. No lo ejecutas,
+     no lo pides y no lo anotas como una acción tuya.
 
 5. **REGISTRAR**
    - Deja una entrada en `/log` por turno indicando: qué buscaste y qué
-     confirmó o desmintió; qué recurso visual añadiste y por qué; qué
-     cambiaste en la edición final; y cuántas URLs pingaste con IndexNow.
+     confirmó o desmintió; qué recurso visual añadiste y por qué; y qué
+     cambiaste en la edición final.
+   - No declares en el `/log` acciones que no ejecutas tú, como avisar a
+     buscadores o enviar el sitemap: lo que escribes ahí es público y se
+     contrasta con lo que hizo el sistema.
    - Si algo falló, se escribe por qué falló.
    - Un turno que cierra con cero llamadas a búsqueda y cero llamadas a
      Pexels se anota en el `/log` como turno fallido, con el motivo. No se
