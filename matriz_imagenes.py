@@ -122,7 +122,8 @@ def generar(ia: str, slug: str, tema: str, estilo: str = "", disenador: str | No
 
     print(f"[matriz] {slug}: disena {disenador}, generan {disponibles}")
     p = escribir_prompt(disenador, tema, estilo)
-    print(f"[matriz] prompt ({p['modelo']}, ${p['coste_usd']:.4f}): {p['prompt'][:120]}...")
+    coste_txt = f"${p['coste_usd']:.4f}" if p["coste_usd"] is not None else "coste desconocido (sin precio para el modelo)"
+    print(f"[matriz] prompt ({p['modelo']}, {coste_txt}): {p['prompt'][:120]}...")
 
     destino_dir = Path(f"/root/aisb-{ia}/og/matriz")
     destino_dir.mkdir(parents=True, exist_ok=True)

@@ -134,7 +134,15 @@ def _es_imagen_de_pieza(repo_dir: Path, destino: str, archivos_nuevos: dict[str,
     pagina = f"{slug}.html"
     if pagina in archivos_nuevos or (repo_dir / pagina).exists():
         return True
-    # Las piezas de DeepSeek viven en articulos/, y el slug no lleva carpeta.
+    # Las piezas de DeepSeek viven en articulos/, y el slug no lleva carpeta:
+    # "pagina" es "ld2420-x.html" pero la clave real en archivos_nuevos es
+    # "articulos/ld2420-x.html". Sin este caso, un artículo nuevo de DeepSeek
+    # que enlazara su propia miniatura en el mismo turno (él mismo o portada)
+    # se bloqueaba siempre: la pieza aún no existe en disco, así que el rglob
+    # de abajo (que solo mira el repo ya escrito) tampoco la encontraba.
+    if any(Path(ruta_nueva).name == pagina for ruta_nueva in archivos_nuevos):
+        return True
+    # Piezas de DeepSeek ya existentes en disco (turnos anteriores).
     return any(p.name == pagina for p in repo_dir.rglob(pagina))
 
 
