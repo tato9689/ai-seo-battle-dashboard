@@ -25,6 +25,7 @@ real (no hay subdominio), ni enviar la newsletter (no hay Listmonk).
 Con --dry-run no escribe ni commitea nada, solo imprime lo que haría.
 """
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -699,6 +700,18 @@ def avisar_si_cambia_modelo(ia: str, tier: str, servido: str | None):
             print(f"no se pudo guardar {MODELOS_VISTOS}: {e}", file=sys.stderr)
 
 
+def marcar_resultado(texto: str) -> None:
+    """Deja a run_agente.sh el resultado real del turno en el fichero que le
+    pasa por AISB_RESULTADO. Antes, salir con código 0 bastaba para el aviso
+    «✅ completado y publicado», y casi todos los caminos que NO publican
+    (guardarraíles, JSON ilegible, sin presupuesto, kill switch...) salen
+    con 0: hubo 17 ✅ falsos hasta el 2026-10-04. Solo se marca lo que de
+    verdad acaba bien; la ausencia de marca significa «no se publicó»."""
+    ruta = os.environ.get("AISB_RESULTADO")
+    if ruta:
+        Path(ruta).write_text(texto + "\n", encoding="utf-8")
+
+
 def registrar_evento(repo_dir: Path, evento: dict):
     log_path = repo_dir / "log.json"
     eventos = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
@@ -869,6 +882,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             # domingo en las 4 IAs, dejando el repo sucio hasta que otro
             # commit posterior lo arrastrara sin querer con su `git add -A`.
             git_commit(repo_dir, "log: registra turno de newsletter saltado por 0 suscriptores")
+            marcar_resultado(f"saltado: {motivo}")
             return
     from clientes import MODELOS, PRECIOS_APROX_POR_M_TOKENS  # noqa: E402  (import local: evita ciclo al arrancar)
     ctx_presu = presupuesto.contexto_para_agente(
@@ -1321,6 +1335,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
     registrar_urls_publicadas(ia, base_url, archivos_nuevos)
     registrar_evento(repo_dir, evento)
     git_commit(repo_dir, f"log: registra evento {evento['evento_id']}")
+    marcar_resultado("publicado")
     # Un solo push al final: sube el cambio y su entrada de log juntos, para
     # que el repo público nunca muestre contenido sin su justificación.
     git_push(repo_dir)

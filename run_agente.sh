@@ -28,12 +28,44 @@ except Exception as e:
 PY
 }
 
+# Resultado real del turno, lo escribe cron_agente.py (marcar_resultado).
+# Salir con 0 no basta: casi todos los caminos que no publican salen con 0,
+# y hasta el 2026-10-04 cada uno mandaba un «✅ publicado» falso.
+export AISB_RESULTADO="/root/ai-seo-battle-dashboard/.resultado-${IA}"
+
+# Por qué no se publicó: el último evento de hoy en log.json, si lo hay.
+motivo_sin_publicar() {
+  /root/ai-seo-battle-dashboard/venv/bin/python - "/root/aisb-${IA}/log.json" <<'PY' 2>/dev/null || true
+import json, sys
+from datetime import datetime, timezone
+try:
+    ev = json.load(open(sys.argv[1], encoding="utf-8"))[0]
+except Exception:
+    ev = {}
+hoy = datetime.now(timezone.utc).date().isoformat()
+if str(ev.get("timestamp", "")).startswith(hoy) and ev.get("resultado") == "error":
+    print((ev.get("detalle_error") or ev.get("output_resumen") or "error sin detalle")[:300])
+else:
+    print("no dejó evento (kill switch, clave que falta, ruta insegura o respuesta no aplicable)")
+PY
+}
+
 on_exit() {
   local rc=$?
-  if [ "$rc" -eq 0 ]; then
+  local res=""
+  [ -f "$AISB_RESULTADO" ] && res=$(head -n1 "$AISB_RESULTADO")
+  if [ "$res" = "publicado" ]; then
     local dom
     dom=$(cat /root/ai-seo-battle-dashboard/.dominio 2>/dev/null || echo '?')
-    avisar "✅ AI SEO Battle: ${TIPO} de ${IA} completado y publicado en https://${IA}.${dom}"
+    if [ "$rc" -eq 0 ]; then
+      avisar "✅ AI SEO Battle: ${TIPO} de ${IA} completado y publicado en https://${IA}.${dom}"
+    else
+      avisar "🟠 AI SEO Battle: ${TIPO} de ${IA} generado y commiteado, pero falló un paso del despliegue (código ${rc}) — revisa logs/cron-${IA}.log"
+    fi
+  elif [ "$rc" -eq 0 ] && [[ "$res" == saltado:* ]]; then
+    avisar "⏭️ AI SEO Battle: ${TIPO} de ${IA} saltado (${res#saltado: })"
+  elif [ "$rc" -eq 0 ]; then
+    avisar "⚠️ AI SEO Battle: ${TIPO} de ${IA} terminó SIN publicar: $(motivo_sin_publicar)"
   else
     avisar "🔴 AI SEO Battle: ${TIPO} de ${IA} FALLÓ (código ${rc}) — revisa logs/cron-${IA}.log"
   fi
@@ -48,6 +80,8 @@ avisar "🚀 AI SEO Battle: arranca ${TIPO} de ${IA}"
 # un turno por llegar tarde sería peor que empezarlo cinco minutos después.
 exec 9>/var/lock/aisb-turno.lock
 flock 9
+# Dentro del candado: el turno anterior ya terminó y nadie lee su marca.
+rm -f "$AISB_RESULTADO"
 
 set -a; . /root/.config/ai-seo-battle/.env; set +a
 cd /root/ai-seo-battle-dashboard

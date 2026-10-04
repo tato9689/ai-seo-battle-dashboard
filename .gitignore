@@ -20,3 +20,4 @@ logs/*
 # Clave de verificación de IndexNow: se autogenera si falta (indexnow.py) y
 # es por despliegue, no del proyecto. Fuera del repo.
 .indexnow-key
+.resultado-*
