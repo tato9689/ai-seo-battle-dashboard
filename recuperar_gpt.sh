@@ -52,14 +52,19 @@ apuntar() {  # apuntar <diario|diseno>: añade el turno de hoy si no está ya
 # Hoy ya hubo turno doble: no gastar ni el sondeo.
 [ "$(cat "$ULTIMA" 2>/dev/null)" = "$HOY" ] && exit 0
 
+# Temporal propio y único (antes una ruta fija en /tmp: otro usuario podía
+# dejar ahí un enlace o un cuerpo falso, y un curl fallido reutilizaba la
+# respuesta vieja de otro sondeo).
+SONDEO=$(mktemp) || exit 1
+trap 'rm -f "$SONDEO"' EXIT
 # Sondeo casi gratis: 16 tokens (con 1 el modelo da 400 aunque haya crédito) con el modelo barato de gpt.
-codigo=$(curl -s -m 30 -o /tmp/aisb-sondeo.json -w '%{http_code}' https://api.openai.com/v1/chat/completions \
+codigo=$(curl -s -m 30 -o "$SONDEO" -w '%{http_code}' https://api.openai.com/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" -H 'Content-Type: application/json' \
   -d '{"model":"gpt-5.4-mini-2026-03-17","messages":[{"role":"user","content":"ok"}],"max_completion_tokens":16}')
 if [ "$codigo" != "200" ]; then
   echo "$(date -Is) sondeo gpt: HTTP $codigo, sin crédito o API caída, espero"
   # Solo se apunta si es falta de crédito de verdad, no una caída de la API.
-  if grep -q 'credit_balance_exhausted\|insufficient_quota' /tmp/aisb-sondeo.json; then
+  if grep -q 'credit_balance_exhausted\|insufficient_quota' "$SONDEO"; then
     ahora=$(date +%H%M); dia=$(date +%u)
     [ "$ahora" -ge 1730 ] && apuntar diario
     [ "$ahora" -ge 1050 ] && { [ "$dia" = 2 ] || [ "$dia" = 4 ]; } && apuntar diseno
