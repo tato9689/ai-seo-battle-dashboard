@@ -98,7 +98,15 @@ def coste_estimado(modelo: str, tokens_in: int | None, tokens_out: int | None) -
 # sin límite explícito, así que el problema es específico de este tope, no
 # del tamaño del prompt en sí. Margen amplio a propósito: este límite ya
 # mordió dos veces por quedarse corto, más vale pasarse que repetirlo.
-MAX_SALIDA = 32000
+#
+# Subido de 32000 a 48000 el 2026-10-05: los turnos de Claude de los días
+# 2, 3 y 5 de octubre se perdieron porque AMBOS intentos (el original y el
+# reintento) llegaron justo a 32000 tokens de salida — la respuesta se corta
+# a media página y el bloque ```json, que va el último, no llega a existir.
+# Eran ~0,83 $ tirados por día. `stop_reason` ahora se devuelve como
+# "parada" para que cron_agente.py distinga "cortado por longitud" de
+# "formato mal".
+MAX_SALIDA = 48000
 
 # Tres tiers: "diaria" (barato, tarea rutinaria de cron), "semanal"
 # (flagship de coste contenido, para la newsletter semanal de cada agente)
@@ -230,6 +238,7 @@ def _llamar_claude_meta(system: str, user: str, modelo: str) -> dict:
         # si el alias pedido flota con el tiempo, esto guarda la realidad,
         # no lo que se pidió (ver punto 8 de la revisión de Claude Opus).
         "modelo": data.get("model", modelo),
+        "parada": data.get("stop_reason"),
     }
 
 

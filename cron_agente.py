@@ -1052,19 +1052,42 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         intento original: sigue siendo un turno de cron, no dos."""
         nonlocal resultado, texto, ya_reintentado
         ya_reintentado = True
-        print(f"[{ia}] {problema} — reintento una vez en el mismo turno.", file=sys.stderr)
+        cortada = resultado.get("parada") == "max_tokens"
+        print(f"[{ia}] {problema}{' (respuesta CORTADA por límite de longitud)' if cortada else ''} — reintento una vez en el mismo turno.", file=sys.stderr)
+        if cortada:
+            # Pasó de verdad con Claude el 2026-10-02, 03 y 05: la respuesta
+            # llegó al tope de salida, el ```json final no existió, y el
+            # reintento antiguo (repite TODO, con la respuesta cortada
+            # pegada) volvía a chocar con el mismo tope. Aquí se pide lo
+            # contrario: menos, no lo mismo. No se pega la respuesta
+            # entera (32-48k tokens de entrada tirados), solo el arranque.
+            instruccion = (
+                f"{user}\n\n---\n\n"
+                "Tu respuesta anterior en este MISMO turno se CORTÓ por llegar al límite "
+                "de longitud de salida, así que el bloque ```json final no llegó a existir "
+                "y no se aplicó nada. Este es solo el principio de lo que escribiste:\n"
+                f"{texto[:2500]}\n\n"
+                "Repítela MÁS CORTA, de modo que quepa entera: razonamiento de 15 líneas "
+                "como mucho; escribe SOLO los archivos que de verdad cambian (nada de "
+                "reescribir páginas que no tocas, nada de memoria que no cambie); y "
+                "termina SIEMPRE con el bloque ```json. Si aun así no cabe, haz la mitad "
+                "(una sola pieza) y deja el resto para el próximo turno."
+            )
+        else:
+            instruccion = (
+                f"{user}\n\n---\n\n"
+                f"Tu respuesta anterior en este MISMO turno no se pudo aplicar: {problema}\n\n"
+                f"Tu respuesta anterior completa, para que la tengas a mano:\n{texto}\n\n"
+                "Repite tu respuesta completa y correcta: el mismo bloque JSON "
+                "(mismo accion_tipo y output_resumen si siguen siendo ciertos) y, "
+                "para CADA ruta que listes en \"archivos\", su bloque "
+                "```archivo:esa-ruta``` con el contenido completo — no lo resumas "
+                "ni digas \"sin cambios\", incluye el HTML/CSS entero. Si de "
+                "verdad no puedes completarlo esta vez, usa "
+                "\"accion_tipo\": \"esperar-mas-datos\" y explica por qué."
+            )
         extra = llamar_con_metadata(
-            ia, system,
-            f"{user}\n\n---\n\n"
-            f"Tu respuesta anterior en este MISMO turno no se pudo aplicar: {problema}\n\n"
-            f"Tu respuesta anterior completa, para que la tengas a mano:\n{texto}\n\n"
-            "Repite tu respuesta completa y correcta: el mismo bloque JSON "
-            "(mismo accion_tipo y output_resumen si siguen siendo ciertos) y, "
-            "para CADA ruta que listes en \"archivos\", su bloque "
-            "```archivo:esa-ruta``` con el contenido completo — no lo resumas "
-            "ni digas \"sin cambios\", incluye el HTML/CSS entero. Si de "
-            "verdad no puedes completarlo esta vez, usa "
-            "\"accion_tipo\": \"esperar-mas-datos\" y explica por qué.",
+            ia, system, instruccion,
             tier=tier, modelo=resultado["modelo"],
         )
         resultado = {
@@ -1073,6 +1096,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "tokens_in": (resultado.get("tokens_in") or 0) + (extra.get("tokens_in") or 0),
             "tokens_out": (resultado.get("tokens_out") or 0) + (extra.get("tokens_out") or 0),
             "duracion_seg": (resultado.get("duracion_seg") or 0) + (extra.get("duracion_seg") or 0),
+            "parada": extra.get("parada"),
         }
         texto = resultado["texto"]
 
