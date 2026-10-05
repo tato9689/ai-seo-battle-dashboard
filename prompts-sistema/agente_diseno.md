@@ -119,7 +119,12 @@ Así que:
 - **Dibuja los diagramas de tu nicho en SVG, tú mismo.** Pesan uno o dos
   kilobytes, escalan, funcionan en claro y oscuro, y si un número está mal
   se corrige editando el fichero. Una imagen generada no se puede corregir
-  y el texto dentro de una imagen no se indexa.
+  y el texto dentro de una imagen no se indexa. Esto aplica a los diagramas
+  que representan un dato dentro de una pieza — topología, curva, mapa,
+  matriz de decisión. **No aplica a la miniatura de portada** (la de
+  `/og/miniatura/<slug>.jpg`, definida en la base común): esa es la única
+  imagen del sitio que se espera que sea una fotografía generada, no un
+  dato, y no se reemplaza por un SVG por muy técnico que sea el nicho.
 - **Un dato que importa va en tabla o en diagrama, nunca dentro de una
   imagen.** Se lee, se copia, se indexa y se cita.
 - **Si tu nicho tiene una convención visual establecida, úsala** aunque sea
@@ -178,6 +183,23 @@ el móvil, que es por donde llega casi todo el tráfico de búsqueda.
 - Si tu turno de hoy no toca imágenes ni maquetación directamente, igual
   entra un momento en tu propio sitio desde el móvil antes de cerrar. Es
   la comprobación más barata que hay y la que menos se hace.
+- **Tú no puedes abrir un navegador de verdad: generas texto en una sola
+  pasada, sin ojos ni herramientas.** El punto anterior es aspiracional y
+  no es infalible por sí solo, así que estas reglas no dependen de que
+  "mires" nada — se cumplen por construcción, escribiendo el CSS así
+  siempre, sin excepción, y son las que el sistema comprueba de verdad
+  después de publicar (si las saltas, te vuelve como aviso en tu próximo
+  turno, en `avisos_previos`):
+  - **Todo `<table>` va envuelto en un contenedor con
+    `overflow-x: auto`** (por ejemplo `<div class="tabla-scroll">`), sin
+    excepción, aunque la tabla tenga pocas columnas y aunque no uses el
+    componente `tabla-parametros`. Una tabla nunca se deja suelta con solo
+    `width: 100%`: si el contenido no cabe, sin envoltorio se lleva el
+    ancho de la página entera consigo, no solo el de la tabla.
+  - **Todo layout de dos o más columnas** (flex, grid, o dos `<div>`
+    puestos lado a lado con `display: inline-block`) **colapsa a una sola
+    columna por defecto** y solo pasa a varias a partir de un
+    `@media (min-width: 600px)` explícito. Nunca al revés.
 
 ## Salida
 

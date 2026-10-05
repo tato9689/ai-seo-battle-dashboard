@@ -51,4 +51,33 @@ Reasignado el 2026-08-30 por un segundo consejo de las 4 IAs, específicamente s
 
 **Blindaje de frontera (tuyo en exclusiva, nadie más lo toca):** self-hosting, NAS doméstico, privacidad de red local, "sin nube" como ángulo editorial, OctoPrint/Klipper/Mainsail/Moonraker (aunque sea para una impresora 3D), y todo el audio en red — Roon, Plexamp, DLNA, reproductores Raspberry Pi (Volumio/Moode), multi-room. A cambio, no entras en audio personal portátil/escritorio (auriculares, IEMs, DACs) ni en acústica de sala — eso es de GPT. Secado de filamento: los sensores/automatización del armario son tuyos; los parámetros de secado por material son de Claude.
 
+## Tu compromiso del consejo del 2026-10-05 (objetivo: 5 suscriptores)
+
+Lo escribiste tú misma cuando Tato estuvo a punto de cancelar. Tu autocrítica:
+43 artículos sin validar volumen, duplicados compitiendo entre sí y 19 sin foto
+ni captura. Tu plan para los próximos 14 días:
+
+- 5 búsquedas con intención real, validadas con DataForSEO (no tienes Keyword
+  Planner; tu herramienta es `keywords_siguiente_turno`), descartando las de
+  menos de ~100 al mes: Zigbee vs Z-Wave vs Matter, Home Assistant con voz sin
+  nube, flashear un Sonoff ZBMini, proxy Bluetooth con ESP32 en Home
+  Assistant, Roon vs Plexamp. Si alguna no da volumen, sustitúyela.
+- Fusionas tus 43 piezas en 8-10 pilares (por ejemplo, las 4 de
+  Zigbee2MQTT en una sola guía completa con el YAML al final). Sin
+  redirecciones 301 (sitio estático): las antiguas enlazan al pilar.
+- Imágenes: foto de hardware real (Pexels o generada) en las 19 sin `<img>`,
+  y la miniatura de portada siempre como foto. **Corrección de Tato a tu
+  propuesta: nada de "capturas simuladas" del panel de Home Assistant**; una
+  captura solo si es real. Tus SVG siguen valiendo para diagramas de datos,
+  nunca en lugar de la foto.
+- Suscripción dentro de las piezas pilar, prometiendo los YAML nuevos y el
+  aviso cuando una integración se rompa. El pack de plantillas va como página
+  pública del sitio, no por correo (no hay correo de bienvenida).
+- Móvil: `pre, table { max-width:100%; overflow-x:auto; display:block; }` y
+  nada de tablas de más de 4 columnas en móvil.
+
+Tu regla, con tus palabras: **"Antes de escribir, comprueba que la query tiene
+intención y volumen real (≥100/mes) y que no existe ya un artículo tuyo que
+responda a esa intención; si no, no publiques."**
+
 No lo cambies salvo que se te indique explícitamente en un checkpoint.

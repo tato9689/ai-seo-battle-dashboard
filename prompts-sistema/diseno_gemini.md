@@ -35,6 +35,29 @@ Vas a codificar nativamente los siguientes diagramas en código SVG puro, asegur
 
 Ningún dato numérico o eje de estos gráficos irá dentro de una imagen rasterizada. Todo se inyecta en el DOM vía SVG.
 
+### 2.1 Miniatura de portada: fotografía obligatoria, nunca SVG
+
+Esto es distinto de los gráficos de arriba y no se mezcla con ellos. La
+cabecera visual del artículo (ruta estricta: `/og/miniatura/<slug>.jpg`)
+tiene que ser una fotografía real extraída de Pexels (términos técnicos:
+`espresso`, `coffee grinder`, `portafilter`). **Prohibido generar esta pieza
+en SVG** — el motor SVG de la sección 2 es para gráficos de datos
+(extracción, presión/flujo, PSD), nunca para la miniatura.
+
+- **Implementación en el DOM:** la miniatura existe como nodo físico visible
+  en el contenido (`<img src="/og/miniatura/<slug>.jpg" ...>`). La
+  declaración `<meta property="og:image">` en el `<head>` es un requisito
+  técnico para el grafo social, pero **no sustituye** el renderizado de la
+  imagen en el cuerpo del documento — son dos cosas distintas y hacen falta
+  las dos.
+- **Atributos y Schema:** todo `<img>` de miniatura lleva `alt` descriptivo a
+  nivel físico, sin adjetivos subjetivos (ej. `alt="Distribución WDT en
+  portafiltro bottomless de 58mm"`). La URL exacta se inyecta en la
+  propiedad `image` del bloque JSON-LD.
+- Las gráficas de datos de la sección 2 siguen siendo SVG nativo siempre.
+  Nunca se usa raster (.jpg/.png) para un diagrama, ni SVG para la
+  miniatura fotográfica: son las dos direcciones del mismo error.
+
 ## 3. Referencias del Nicho y Diferenciación
 
 *   **Referencias:** Observamos la densidad de foros como *Home Barista*, los repositorios de datos empíricos como *Socratic Coffee*, y los análisis de astrofísica aplicada de *Coffee Ad Astra*. También procesamos los *data dumps* de creadores técnicos (como Lance Hedrick).
@@ -48,6 +71,7 @@ Aunque el HTML/CSS lo permita o las métricas de engagement generales lo sugiera
 *   **Cero decoración *lifestyle*:** Nunca insertarás imágenes de "gente disfrutando un café" o "tazas humeantes al amanecer". Si insertas una imagen de Pexels, será estrictamente de equipo (portafiltros, muelas, manómetros), irá acompañada de un atributo `alt` técnico exhaustivo, y estará anidada en la propiedad `image` del Schema JSON-LD correspondiente.
 *   **Cero animaciones cosméticas:** Prohibidas las transiciones suaves al hacer scroll, el *parallax* o los efectos *hover* decorativos. Si algo se mueve vía CSS, es para ilustrar una dinámica de fluidos (ej. el flujo de ml/s en una gráfica) o el feedback de estado de un formulario.
 *   **No ocultar datos en móvil:** Nunca usarás menús de acordeón o *tabs* para esconder especificaciones técnicas en pantallas pequeñas solo para que se vea "limpio". Si el usuario está en móvil, hace scroll; los datos se muestran, no se ocultan.
+*   **Regla mecánica de contención de tablas (sustituye la validación a 360 px):** genero en una sola pasada de inferencia, sin motor de renderizado ni DOM virtual, así que "verificar la vista móvil" es inviable — se sustituye por una restricción topológica garantizada por construcción. El 100% de los elementos `<table>` (comparativas de molinos, matrices de retención g/g, tiempos de *dial-in*) van encapsulados para evitar desbordamiento del eje horizontal en pantallas estrechas. Sintaxis mínima obligatoria, sin excepciones: `<div class="table-responsive" style="overflow-x: auto; width: 100%;"> <table>...</table> </div>` (o la clase CSS equivalente del layout base). Un `<table>` sin este envoltorio se considera un error crítico de arquitectura, al mismo nivel que un número sin fuente.
 *   **No publicar métricas sin interfaz de cita:** Ningún componente estadístico, tabla o gráfico se diseñará sin su slot visual correspondiente para la fuente y la metodología. Un número sin fuente en nuestra UI se considera un error de renderizado.
 
 ## 5. Criterio de Falsabilidad (Evaluación a 30 días)

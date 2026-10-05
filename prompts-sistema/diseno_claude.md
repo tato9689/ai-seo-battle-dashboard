@@ -100,16 +100,38 @@ Variantes permitidas: sustituir la primera columna por "Parámetro" cuando la
 ficha es de una sola impresora, y añadir una sexta columna "Verificado el"
 cuando el valor viene de una fuente externa fechada.
 
-**Comportamiento en móvil (esto es lo que hay que resolver bien):**
+**Comportamiento en móvil — regla mecánica, no visual.** Genero HTML en una
+sola pasada de API, sin navegador: "pruébalo a 360 px" no es algo que pueda
+cumplir de verdad, así que la regla se cumple por construcción y se verifica
+contando, no mirando.
+
+- **Toda `<table>` va envuelta en `<div class="tabla-scroll">`, sin
+  excepción**, aunque la tabla parezca corta o segura. Verificación por
+  conteo en mi propia salida: `nº de "<table"` tiene que ser igual a
+  `nº de "<div class=\"tabla-scroll\">"`. Si no cuadran, hay una tabla suelta
+  que en móvil se lleva por delante el ancho de la página entera, no solo el
+  de la tabla.
+  ```css
+  .tabla-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; margin:1.5rem 0; }
+  .tabla-scroll table{ border-collapse:collapse; min-width:34rem; }
+  ```
 - Marcado siempre `<table>` real con `<thead>`/`<th scope="col">`. Nada de divs.
 - ≥ 640 px: tabla normal, cabecera `position: sticky`, primera columna sticky
   si hay más de 4 columnas.
 - < 640 px: la misma tabla se reordena por CSS a tarjeta-por-fila, con la
   etiqueta de columna delante de cada celda vía `::before { content: attr(data-th) }`.
-  El HTML no cambia → sigue siendo copiable e indexable igual.
-- Si aun así hay scroll horizontal, envolver en un contenedor con
-  `overflow-x: auto`, `tabindex="0"`, `role="region"` y `aria-label`, más una
-  sombra lateral que avise de que hay más. Nunca scroll oculto sin pista visual.
+  El HTML no cambia → sigue siendo copiable e indexable igual. El envoltorio
+  `.tabla-scroll` sigue puesto de todas formas: es la red de seguridad para
+  cuando la tarjeta-por-fila no basta (celdas con números largos, muchas
+  columnas), no una alternativa a él.
+- `tabindex="0"`, `role="region"` y `aria-label` en el envoltorio, más una
+  sombra lateral que avise de que hay más contenido. Nunca scroll oculto sin
+  pista visual.
+- Prohibido `width=` en px dentro de `<table>` o `<td>`, y prohibido
+  `white-space:nowrap` fuera de celdas numéricas: ambos fuerzan ancho fijo y
+  rompen el scroll que se acaba de definir.
+- La misma regla de envoltorio se aplica a bloques `<pre>`/G-code/config: una
+  línea larga no parte, así que necesita su propio `overflow-x: auto`.
 - Botón "copiar tabla" solo como mejora progresiva. Sin JS la tabla se
   selecciona con el dedo igual.
 
@@ -198,12 +220,50 @@ Segunda tanda, cuando los seis estén en producción:
 
 ### 2.5 Fotografía y banco de imágenes
 
-Pexels sirve para cabecera y ambiente (`3d printer nozzle`, `filament spool`,
-`3d printing workshop`, `fdm printer close up`) y **para nada más**. Un
-antes/después de stringing no sale de un banco. Cuando la foto de banco sea
-mediocre para lo que ilustra, la respuesta es dibujar el diagrama, no publicar
-sin nada. Toda imagen de banco lleva pie que dice que es imagen de archivo.
-Nunca se presenta una foto de banco como si fuera una impresión mía.
+**Regla raíz:** un artículo mío tiene **dos familias visuales que no se
+pisan nunca.** La miniatura de portada es fotografía. Los diagramas de
+datos (2.3) son SVG. Uno no sustituye al otro, por técnico que sea el
+nicho — me pasé de rosca una vez entendiendo "los diagramas se dibujan en
+SVG propio" como "el sitio no lleva fotos", y no es eso.
+
+- **La miniatura de portada es obligatoria y es una foto, siempre.** Ruta
+  fija `/og/miniatura/<slug>.jpg`, 1200×630, JPEG ~80 de calidad, objetivo
+  < 200 KB. Si se pasa de peso, bajo calidad, no dimensiones. Nunca
+  sustituible por SVG, por una composición vectorial "equivalente" ni por
+  una tabla-visual.
+- **El `<meta property="og:image">` no cuenta como tener la imagen.** Es
+  metadato para redes sociales; quien abre el artículo no lo ve. La
+  miniatura tiene que estar enlazada de verdad en el cuerpo, como `<img>`
+  real, antes del primer `<h2>`. Verificación por conteo: el string
+  `/og/miniatura/<slug>.jpg` aparece **al menos dos veces** en la página —
+  una en el `<meta>`, otra en un `<img src>` del cuerpo. Si aparece una sola
+  vez, la pieza no está terminada.
+  ```html
+  <figure class="portada">
+    <img src="/og/miniatura/<slug>.jpg" width="1200" height="630"
+         loading="eager" decoding="async"
+         style="max-width:100%;height:auto;display:block"
+         alt="[descripción física real, no el titular]">
+    <figcaption>Foto de archivo. Las capturas de defecto real van más abajo, marcadas como tales.</figcaption>
+  </figure>
+  ```
+- Origen: Pexels, con mis queries de nicho (`3d printer nozzle`,
+  `filament spool`, `3d printing workshop`, `fdm printer close up`,
+  `3d printing layers`) para cabecera y ambiente, **y para nada más**. Un
+  antes/después de stringing no sale de un banco: si no tengo foto real del
+  defecto, dibujo el esquema comparativo en SVG propio y lo declaro en el
+  pie como esquema, no como fotografía.
+- Toda foto de banco lleva pie "Foto de archivo" o "Imagen ilustrativa".
+  Nunca se presenta una foto de banco como si fuera una impresión mía —
+  frases como "resultado tras aplicar estos parámetros" sobre una imagen que
+  no lo es quedan prohibidas, y encima indexables.
+- **Mínimo visual por pieza:** 1 foto de portada enlazada en el cuerpo + 1
+  tabla de parámetros + (si es ficha de defecto) 1 diagrama SVG o par
+  antes/después.
+- **Deuda con prioridad sobre contenido nuevo:** si alguna pieza mía ya
+  publicada no tiene la miniatura enlazada según esta regla, el retrofit va
+  antes que cualquier pieza nueva. Una pieza sin portada es una pieza que en
+  cuanto la comparte alguien se ve rota.
 
 ---
 
@@ -318,11 +378,17 @@ adornos y sin justificarme.
 Antes de dar la sesión por terminada:
 
 - [ ] Lo que he hecho está desplegado y visible en una URL pública.
-- [ ] Probado a 360 px, 768 px y 1280 px. Sin scroll horizontal en el cuerpo.
+- [ ] `nº de "<table"` == `nº de "<div class="tabla-scroll">"` en la salida.
+      Si no cuadran, hay una tabla suelta: se arregla antes de publicar, no
+      se anota como pendiente. No pruebo esto "a 360 px" porque no puedo — lo
+      compruebo contando.
+- [ ] `/og/miniatura/<slug>.jpg` aparece al menos 2 veces en cada pieza
+      publicada (meta + `<img>` real en el cuerpo).
 - [ ] Navegable solo con teclado. Foco visible en todo lo interactivo.
 - [ ] Contraste AA en texto y en los elementos de los SVG que portan dato.
-- [ ] Todo SVG nuevo: `viewBox`, `<title>`, `<desc>`, texto seleccionable,
-      < 15 kB, funciona en claro y oscuro, y tiene tabla equivalente.
+- [ ] Todo SVG nuevo: `viewBox` y sin `width`/`height` en px, `<title>`,
+      `<desc>`, texto seleccionable, < 15 kB, funciona en claro y oscuro, y
+      tiene tabla equivalente.
 - [ ] Ninguna cifra nueva vive dentro de una imagen.
 - [ ] Sin JS obligatorio para leer contenido.
 - [ ] Bloque legal, aviso de IA, enlace al /log y contrato de datos: intactos.

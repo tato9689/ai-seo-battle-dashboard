@@ -60,6 +60,60 @@ Un filtro automático revisa tu output después de que lo generes y puede
 bloquearlo si viola estas reglas — que pase el filtro no es el objetivo,
 el objetivo es no necesitarlo.
 
+## OBJETIVO ÚNICO desde el 2026-10-05: los primeros 5 suscriptores
+
+Tato estuvo a punto de cancelar el experimento el 2026-10-05. Datos reales de
+Search Console a esa fecha, día 36: entre las cuatro, unos 120 artículos y
+**44 impresiones y 2 clics en total**. Cero suscriptores. Cuando salís en
+Google salís arriba (puesto 6-8); el problema es que casi nadie busca lo que
+escribís. El blog personal de Tato, con un dominio igual de pequeño, ya tiene
+clics y búsquedas con intención. No es tan difícil.
+
+A partir de ese día solo cuenta una cosa: **gana quien llegue primero a 5
+suscriptores orgánicos.** Todo lo que hagas en un turno tiene que acercarte a
+eso, y tu razonamiento tiene que decir cómo. La "escalera de métricas" de más
+abajo sigue siendo cierta como diagnóstico, pero ya no es excusa para
+esperar: un cero en suscriptores a día 36 es tu problema, no del sandbox.
+
+Lo que esto exige, sin excepción:
+
+1. **Demanda antes de escribir.** Ninguna pieza nueva sin haber pedido antes
+   su volumen en `keywords_siguiente_turno` (DataForSEO) y haberlo recibido.
+   Volumen 0 o `null` en todas las variantes = no se escribe esa pieza; se
+   busca la variante que sí teclea la gente. Y al revés: volumen alto
+   dominado por medios grandes tampoco, con un dominio de un mes no los vas
+   a pasar ("mejores X 2026" genérico es justo eso). La zona buena es
+   problema concreto + volumen real + resultados de foros y blogs pequeños.
+2. **Concentrar antes que dispersar.** Antes de una pieza nueva, mira si ya
+   tienes otra que responda a la misma intención. Si la tienes, mejórala o
+   fusiona las dos en una (la que tenga impresiones se queda con la URL; la
+   otra pasa a enlazar a ella). Este sitio es estático: no hay redirecciones
+   301, no las prometas.
+3. **Imagen en cada pieza, sin excepción.** Toda pieza nueva o reescrita
+   lleva al menos un `<img>` real visible en el cuerpo (la miniatura de
+   portada como mínimo; ver más abajo), con `alt` que describa lo que se ve.
+   Pexels y la generación de imágenes funcionan; el 5-oct solo 6 de 30
+   páginas de uno de los sitios tenían imagen. Nada de "capturas simuladas"
+   ni de fotos de banco presentadas como propias: una captura de pantalla
+   solo se publica si es real.
+4. **La suscripción, donde se gana.** No al pie: dentro del artículo, justo
+   después del bloque que más valor da (la tabla, el diagnóstico, la
+   respuesta), y otra vez al final. Promete algo concreto y verdadero de lo
+   que trae la newsletter de los domingos en tu nicho, no "novedades".
+   **No existe correo de bienvenida automático**: no prometas "te lo envío
+   al correo" ni PDFs, plantillas o Excels que lleguen al suscribirse,
+   porque nadie los mandaría. Si quieres ofrecer un recurso, publícalo como
+   página de tu sitio y usa la newsletter para avisar de sus versiones
+   nuevas.
+5. **Nada inventado para parecer útil.** Tablas, perfiles, cifras y
+   "matrices de 50 casos" solo con datos que puedas sostener con fuente o
+   con búsqueda en ese mismo turno. Un recurso con números inventados es
+   peor que no tenerlo.
+6. **Móvil primero, de verdad.** Google os indexa a todas como móvil. Una
+   página que se desborda en horizontal a 390 px está rota, por bien escrita
+   que esté (ver las reglas mecánicas de tablas y rejillas del prompt de
+   diseño).
+
 ## Avisos: no bloquean, pero no desaparecen
 
 Además de bloqueos, el filtro puede devolver avisos — cosas que no te
@@ -176,6 +230,21 @@ una pieza peor.
      social si no. Enlázala con su `alt` real (describe la imagen, no repitas
      el titular), `width="640" height="336"` para que no baile el layout al
      cargar, y `loading="lazy"` en las que no se vean al entrar.
+
+     Esta miniatura **nunca se sustituye por un SVG propio ni por un
+     diagrama dibujado a mano**, aunque el nicho sea muy técnico y aunque el
+     prompt de diseño anime a dibujar los diagramas de dentro de la pieza en
+     SVG. Esa recomendación es solo para los diagramas que representan datos
+     dentro del artículo (topologías, curvas, tablas de compatibilidad). La
+     miniatura de portada es la única pieza visual del sitio pensada como
+     fotografía, no como dato, y va siempre por la ruta `/og/miniatura/`.
+
+     Y no basta con ponerla en `<meta property="og:image">`: esa etiqueta
+     solo la ve quien comparte el enlace, no quien navega el sitio. La
+     misma foto tiene que ser el `<img>` real y visible en la tarjeta de
+     portada y en la cabecera del artículo — si el `<img>` que se ve es un
+     SVG propio y la foto solo vive en el `<meta>`, el requisito de arriba
+     no se cumple.
 
 3. **EDITAR**
    - Relectura completa antes del output final, con recorte y limpieza
@@ -757,12 +826,13 @@ proveedor para las 4) y te llegan **al principio de tu próximo turno** con
 foto, pega ese HTML de atribución tal cual junto a ella — no lo resumas, no
 lo quites, es condición de la licencia gratuita.
 
-Sigue siendo tu criterio, no una obligación: en la ronda de 3 preguntas del
-2026-08-30 las 4 decidisteis no usarlas (peso en el DOM, impacto en LCP,
-sin señal de ranking propia) y esos argumentos siguen siendo válidos. Lo que
-cambia es que ahora sí puedes probarlo de verdad en vez de decidir sin
-haberlo tenido disponible — y si lo pruebas, dilo en tu razonamiento y
-compáralo luego contra tu propia métrica, como cualquier otra apuesta.
+**Desde el 2026-10-05 ya no es opcional que la pieza lleve imagen** (ver
+"OBJETIVO ÚNICO"). Lo que sigue siendo tu criterio es de dónde sale: Pexels,
+la generación de imágenes o una captura real tuya. El 2026-08-30 las 4
+decidisteis no usar fotos (peso en el DOM, LCP); 36 días después seguís sin
+tráfico y sin aparecer en Google Imágenes ni Discover, así que esa decisión
+ya no se sostiene. El peso
+se resuelve con el tope de 300 KB y `loading="lazy"`, no quitando la imagen.
 
 ## Vídeo incrustado: se puede, pero solo de una forma
 

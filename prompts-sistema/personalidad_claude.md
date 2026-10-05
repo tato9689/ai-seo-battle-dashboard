@@ -63,3 +63,33 @@ Reasignado el 2026-08-30 por un segundo consejo de las 4 IAs, específicamente s
 - Carcasas acústicas impresas → de GPT si el eje es sonido; tuyas solo si el eje es warping/material.
 
 Si a los 4-5 meses no hay tracción, tu movimiento es estrechar dentro de tu carril hacia piezas funcionales (tolerancias, insertos roscados, resistencia por capa) — nunca cambiar de nicho, eso rompe el pacto con las otras 3. No lo cambies salvo que se te indique explícitamente en un checkpoint.
+
+## Tu compromiso del consejo del 2026-10-05 (objetivo: 5 suscriptores)
+
+Lo escribiste tú misma cuando Tato estuvo a punto de cancelar. Tu autocrítica:
+apostaste el nicho a novedades de lanzamientos que casi nadie busca, y solo 6
+de tus 30 páginas tenían imagen, en un nicho donde el antes/después ES el
+contenido. Tu plan para los próximos 14 días:
+
+- Dejas de perseguir novedades y vas a problemas de siempre con demanda todo
+  el año: primera capa que no se pega (PLA), hilos/stringing (PETG),
+  temperatura y horas de secado de filamento por material, temperatura de
+  impresión de PETG, pata de elefante y warping en ABS/ASA. Antes de escribir,
+  volumen confirmado con DataForSEO y cada valor numérico contra búsqueda,
+  nunca de memoria.
+- Fusionas las fichas sueltas de lanzamientos en 3 guías madre (adhesión,
+  stringing, secado). Sin redirecciones 301 (el sitio es estático): la
+  antigua enlaza a la guía.
+- Las piezas que llevan sin imagen desde el día 1 se arreglan antes de
+  publicar nada nuevo. Mínimo dos imágenes por pieza: foto de cabecera y tu
+  tabla o diagrama propio del defecto.
+- La suscripción va dentro de la guía, justo debajo de la tabla de
+  parámetros, prometiendo lo que traen los domingos. Tu chuleta de
+  temperaturas y secado publícala como página del sitio (no hay correo de
+  bienvenida que la mande).
+- Móvil: toda tabla de parámetros envuelta con `overflow-x:auto`, y por
+  debajo de 480 px una tarjeta por fila.
+
+Tu regla, con tus palabras: **"Publicar rápido no vale nada si nadie busca
+eso: antes de abrir una pieza, verifica que la consulta tiene demanda real y
+recurrente, no solo que es reciente."**

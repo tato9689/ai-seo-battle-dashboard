@@ -189,7 +189,23 @@ def _enlaces_rotos(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]
     return sorted(set(errores))
 
 
-def _duplicacion(paginas: dict[str, str]) -> list[str]:
+def _duplicacion(paginas: dict[str, str], nuevas: set[str] | None = None) -> list[str]:
+    """`nuevas`: claves de `paginas` que cambian este turno (archivos_nuevos).
+    Si se da, solo se comparan pares donde AL MENOS una de las dos páginas es
+    nueva hoy — las páginas viejas entre sí ya se compararon (o no) el turno
+    en que una de ellas era la nueva, y recompararlas cada vez que pasa un
+    turno cualquiera es trabajo repetido sin ganancia.
+
+    Encontrado el 2026-09-18: sin este filtro, la función compara TODAS las
+    páginas contra TODAS (C(n,2) pares) en cada turno de cada uno de los 4
+    sitios, con `autojunk=False` — caro a propósito, ver más abajo. Con 26
+    páginas ya tardaba minutos; iba a peor cada turno según crecía el sitio,
+    hasta el punto de colgar una comprobación de sanidad que debía tardar
+    segundos. `_paginas_html` ya documentaba la intención correcta ("ver el
+    conjunto completo para detectar duplicación... entre una página nueva y
+    una que no cambió hoy") pero el bucle no la aplicaba: comparaba todo
+    contra todo, no solo lo nuevo contra el resto.
+    """
     errores = []
     rutas = list(paginas.keys())
     textos = {r: _texto_visible(paginas[r]) for r in rutas}
@@ -199,12 +215,20 @@ def _duplicacion(paginas: dict[str, str]) -> list[str]:
         for b in rutas[i + 1:]:
             if len(textos[b]) < 200:
                 continue
+            if nuevas is not None and a not in nuevas and b not in nuevas:
+                continue
+            sm = SequenceMatcher(None, textos[a], textos[b], autojunk=False)
+            # Cota superior barata antes del cálculo caro: si ni siquiera el
+            # solapamiento de caracteres (sin importar orden) llega al
+            # umbral, el ratio real —que nunca puede superar esta cota— tampoco.
+            if sm.quick_ratio() < UMBRAL_DUPLICADO:
+                continue
             # autojunk=False: por defecto difflib descarta como "ruido"
             # cualquier fragmento muy repetido en textos largos (>200
             # caracteres) — justo el patrón típico de contenido duplicado,
             # así que con autojunk activado el ratio sale artificialmente
             # bajo en el caso que este check existe para detectar.
-            ratio = SequenceMatcher(None, textos[a], textos[b], autojunk=False).ratio()
+            ratio = sm.ratio()
             if ratio >= UMBRAL_DUPLICADO:
                 errores.append(f"contenido casi duplicado entre {a} y {b} (similitud {ratio:.0%})")
     return errores
@@ -815,7 +839,8 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     bloqueantes += _enlaces_rotos(repo_dir, archivos_nuevos)
 
     paginas = _paginas_html(repo_dir, archivos_nuevos)
-    bloqueantes += _duplicacion(paginas)
+    nuevas_html = {k for k in archivos_nuevos if k.endswith(".html")}
+    bloqueantes += _duplicacion(paginas, nuevas_html)
     bloqueantes += _canibalizacion(paginas)
 
     b, a = _metadatos(archivos_nuevos)
@@ -848,6 +873,8 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
     avisos += _fuente_prometida_sin_servir(repo_dir, archivos_nuevos)
     avisos += _identidad_visual(repo_dir, archivos_nuevos)
     avisos += _miniaturas_en_portada(repo_dir, archivos_nuevos)
+    avisos += _miniaturas_svg_en_vez_de_foto(repo_dir, archivos_nuevos)
+    avisos += _tablas_sin_envoltorio_scroll(archivos_nuevos)
 
     return bloqueantes, avisos
 
@@ -964,3 +991,147 @@ def _miniaturas_en_portada(repo_dir: Path, archivos_nuevos: dict[str, str]) -> l
             f"pieza, en /og/miniatura/<slug>.jpg — solo hay que enlazarlas con su "
             f"alt real, width y height, y loading=\"lazy\" en las que no se vean al "
             f"entrar"]
+
+
+_RE_SRC = re.compile(r'<img\b[^>]*\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
+
+
+def _miniaturas_svg_en_vez_de_foto(repo_dir: Path, archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: la portada tiene imágenes, pero son SVG propios, no la foto real.
+
+    `_miniaturas_en_portada` de arriba solo cuenta `<img>`, así que un SVG
+    propio puesto en el sitio de la miniatura la satisface igual que una
+    foto — no hay forma de distinguirlas contando etiquetas, hace falta
+    mirar la extensión.
+
+    Nota de implementación: no se comprueba contra `og/miniatura/<slug>.jpg`
+    en disco a propósito. Esa ruta la escribe `imagen_publicada.py`
+    directamente en `/var/www/<ia>.<dominio>/`, fuera del repo git que este
+    módulo valida (`repo_dir` es `/root/aisb-<ia>`) — mirar ahí rompería la
+    separación deliberada entre "escribir" (cron_agente.py) y "publicar"
+    (run_agente.sh) documentada en ese script. Por eso el check es una
+    proporción sobre las imágenes que la propia portada ya muestra, no una
+    comprobación de fichero.
+
+    Encontrado el 2026-09-18: un sitio tenía la foto real ya generada para
+    sus 19 piezas y ninguna enlazada — las 19 tarjetas usaban en su lugar un
+    SVG propio (`/img/portada-<slug>.svg`), y el check de arriba nunca lo vio
+    porque solo contaba imágenes. Pedido explícito de Tato: las miniaturas
+    son fotografía, no vector, y el `<meta property="og:image">` no cuenta
+    como sustituto — tiene que ser el `<img>` visible.
+
+    Aviso y no bloqueo, mismo motivo que el check de arriba: es una
+    proporción sobre el sitio entero y el turno que valida hoy puede no ser
+    el que decidió sustituir las miniaturas.
+    """
+    index = archivos_nuevos.get("index.html")
+    if index is None and (repo_dir / "index.html").exists():
+        index = (repo_dir / "index.html").read_text(encoding="utf-8", errors="ignore")
+    if not index:
+        return []
+    index = _sin_comentarios(index)
+    cuerpo = _RE_HEADER.sub(" ", index)
+    cuerpo = re.sub(r"<footer\b[^>]*>.*?</footer>", " ", cuerpo, flags=re.IGNORECASE | re.DOTALL)
+
+    piezas = set()
+    for destino in _RE_ENLACE_INTERNO.findall(cuerpo):
+        limpio = destino.strip("/").removesuffix(".html")
+        if not limpio or limpio in _NO_SON_PIEZAS or limpio.startswith(("http", "mailto")):
+            continue
+        piezas.add(limpio)
+    if len(piezas) < 3:
+        return []
+
+    imgs = _RE_SRC.findall(cuerpo)
+    if not imgs:
+        return []  # el hueco de imagen ya lo cubre _miniaturas_en_portada
+    svg = sum(1 for s in imgs if s.lower().split("?")[0].endswith(".svg"))
+    if svg == 0 or (svg / len(imgs)) < 0.5:
+        # unos pocos iconos sueltos entre fotos no son el patrón que preocupa
+        return []
+    return [f"de las {len(imgs)} imágenes que tu portada muestra en tarjetas de "
+            f"pieza, {svg} son SVG en vez de fotografía. La miniatura de portada "
+            f"(og/miniatura/<slug>.jpg, que el sistema ya deja generada por ti) es "
+            f"la única pieza visual del sitio pensada como fotografía: un SVG "
+            f"dibujado a mano no la sustituye, por técnico que sea el nicho, y no "
+            f"vale con ponerla solo en <meta property=\"og:image\">"]
+
+
+_RE_TABLE_OPEN = re.compile(r"<table\b[^>]*>", re.IGNORECASE)
+_RE_DIV_CLASS_ANTES = re.compile(r'<div\b[^>]*\bclass=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
+_VENTANA_ENVOLTORIO_TABLA = 400  # caracteres antes de <table> donde puede vivir el <div> envoltorio
+# Nombres de clase que se aceptan de oficio, sin ir a comprobar su CSS: los
+# cuatro sitios ya usan estas cuatro convenciones distintas para lo mismo.
+_CLASES_ENVOLTORIO_SEGURAS = re.compile(r"scroll|wrap|container|shell|tabla-parametros", re.IGNORECASE)
+
+
+def _clase_tiene_overflow(html_completo: str, clases_css: list[str]) -> bool:
+    """¿Alguna de estas clases tiene overflow(-x) en una regla CSS del propio
+    fichero? Cubre el caso de un nombre de clase que no está en la lista de
+    arriba pero sí resuelve el problema — con CSS embebido en el HTML, que es
+    como lo hacen la mayoría de piezas de estos cuatro sitios. Si el CSS vive
+    en una hoja externa (como el `style.css` de Gemini) esto no lo ve, por
+    eso el nombre de clase es la primera comprobación y esta es un remate."""
+    for clase in clases_css:
+        for token in clase.split():
+            patron = re.compile(
+                r"\." + re.escape(token) + r"[^{]*\{[^}]*overflow(?:-x)?\s*:", re.IGNORECASE
+            )
+            if patron.search(html_completo):
+                return True
+    return False
+
+
+def _tablas_sin_envoltorio_scroll(archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso: hay una <table> sin contenedor que haga scroll horizontal, así
+    que en móvil no se desplaza solo ella sino que se lleva por delante el
+    ancho de toda la página.
+
+    Confirmado el 2026-09-18 con capturas reales a 360px de ancho: de cuatro
+    sitios probados, dos tenían justo este patrón, y en los dos casos el
+    desbordamiento no se quedaba contenido en la tabla — el viewport entero
+    de la página se reportaba más ancho que el móvil (449px y 636px en vez
+    de 390px). Los otros dos sí envuelven bien su tabla (con `overflow:auto`
+    o `overflow-x:auto` en un `<div>` contenedor, aunque cada uno le puso un
+    nombre de clase distinto) y no se tocan aquí.
+
+    La razón de que nadie se diera cuenta antes: el agente genera texto en
+    una sola pasada de API, sin navegador ni capacidad de mirar su propio
+    sitio. "Comprueba el sitio a 360px" en el prompt de diseño era una
+    instrucción que no podían cumplir de verdad. Este check sustituye esa
+    comprobación imposible por una mecánica: si no hay un `<div>` que
+    envuelva la tabla con `overflow`/`overflow-x` de verdad (por nombre de
+    clase conocido o por su regla CSS en el mismo fichero), no está
+    terminada.
+
+    Heurística, no un parser de HTML/CSS de verdad: busca el
+    `<div class="...">` más cercano antes de la tabla. No sabe si ese div
+    envuelve de verdad la tabla o solo la precede en el marcado, y si el CSS
+    vive en una hoja externa con un nombre de clase no reconocido, no lo
+    verá. Se prefiere dejar pasar algún caso raro a bloquear un turno por un
+    falso positivo. Aviso y no bloqueo por ahora: si se repite después de
+    que esto entre en `avisos_previos`, pasa a bloqueante.
+    """
+    avisos = []
+    for ruta, html in archivos_nuevos.items():
+        if not ruta.endswith(".html"):
+            continue
+        limpio = _sin_comentarios(html)
+        for m in _RE_TABLE_OPEN.finditer(limpio):
+            ventana = limpio[max(0, m.start() - _VENTANA_ENVOLTORIO_TABLA):m.start()]
+            if re.search(r"overflow(?:-x)?\s*:", ventana) or "tabla-parametros" in ventana:
+                continue
+            clases_previas = _RE_DIV_CLASS_ANTES.findall(ventana)
+            if any(_CLASES_ENVOLTORIO_SEGURAS.search(c) for c in clases_previas):
+                continue
+            if clases_previas and _clase_tiene_overflow(limpio, clases_previas):
+                continue
+            avisos.append(f"{ruta} tiene una <table> sin contenedor de scroll "
+                           f"real (nombre de clase reconocible tipo scroll/wrap/"
+                           f"container/shell, o con overflow(-x) en su CSS) en los "
+                           f"{_VENTANA_ENVOLTORIO_TABLA} caracteres anteriores — en "
+                           f"móvil se sale de la página en vez de hacer scroll solo "
+                           f"la tabla. Envuélvela en un contenedor con "
+                           f"overflow-x:auto o usa el componente tabla-parametros")
+            break  # una por página basta de aviso, no hace falta listarlas todas
+    return avisos

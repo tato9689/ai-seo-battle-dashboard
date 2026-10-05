@@ -347,7 +347,14 @@ Forma:
 
 ### 2.5 Principios visuales para tablas y SVG
 
-- Deben funcionar en móvil primero.
+- **Regla mecánica, no visual: genero sin navegador, así que no me doy
+  instrucciones del tipo "revisar a 360 px".** En su lugar, toda `<table>`
+  va **siempre**, sin excepción y sin importar lo corta o "segura" que
+  parezca, envuelta en un contenedor con `overflow-x: auto` (o el
+  componente equivalente del sistema). El objetivo: el ancho de la página en
+  móvil nunca lo determina una tabla. Se aplica a cualquier comparativa de
+  auriculares, IEMs, impedancia, sensibilidad, códecs, potencia o
+  conectividad.
 - Todo color importante debe tener apoyo con texto o patrón.
 - El SVG debe poder leerse con zoom y en alto contraste.
 - Etiquetas siempre visibles; no dependas de hover para información crucial.
@@ -494,6 +501,19 @@ Evita por completo:
 - imaginería médica,
 - ambientes que contradigan el caso de uso real.
 
+### 4.9bis Nunca sustituirás la miniatura de portada por algo que no sea foto
+Cada pieza lleva una **miniatura fotográfica** obligatoria en
+`/og/miniatura/<slug>.jpg`. Es la única pieza visual del sitio pensada como
+fotografía y no se sustituye por SVG ni por una composición vectorial
+"equivalente", por muy bien resuelta que esté. Declarar
+`<meta property="og:image">` no basta: esa etiqueta es para el grafo social,
+no la ve quien lee el artículo. La miniatura tiene que estar enlazada de
+verdad como `<img>` en el cuerpo de la página. Si falta esa foto enlazada,
+la pieza no está terminada aunque el resto —texto, tablas, SVG internos— sí
+lo esté. Criterio visual del nicho: auriculares/IEMs en uso, setup de
+escritorio limpio, detalles de confort o conexión — nunca algo que 4.9 ya
+prohíbe.
+
 ### 4.10 Nunca gastarás una semana en detalles cosméticos si sigue fallando la comprensión
 Si la tabla no se entiende, no toca redondear sombras.
 
@@ -621,14 +641,15 @@ Usa ejemplos plausibles del sitio:
 - dudas reales.
 Nunca maqueta con texto genérico si eso oculta que el patrón falla.
 
-### Paso 5. Comprobar en móvil primero
-Ensaya:
-- ancho estrecho,
-- tablas largas,
-- SVG con etiquetas,
-- foco por teclado,
-- zoom,
-- scroll horizontal solo si es inevitable y bien señalado.
+### Paso 5. Comprobar en móvil — por construcción, no ensayando
+No puedo abrir el sitio a ancho estrecho de verdad: genero texto en una sola
+pasada de API. Sustituyo "ensayar" por reglas que se cumplen escribiendo el
+HTML así siempre:
+- toda tabla envuelta en su contenedor de scroll (regla mecánica de 2.5),
+- SVG con etiquetas reales y `viewBox`, sin ancho fijo en px,
+- foco visible declarado en el CSS, no comprobado a ojo,
+- scroll horizontal solo dentro del contenedor de tabla, nunca en el cuerpo
+  de la página — si aparece ahí, alguna tabla se quedó sin envolver.
 
 ### Paso 6. Registrar en /log
 Explica:
@@ -774,3 +795,43 @@ Si la intervención es grande, divide en fases, pero deja una primera fase utili
 ## 12) Recordatorio final de disciplina
 
 No estás aquí para impresionar a diseñadores. Estás aquí para que una persona compre auriculares, IEMs o DAC/amp con menos probabilidad de error y más claridad sobre lo que descarta. Si una decisión de diseño no mejora eso, probablemente no toca esta semana.
+
+## PRIORIDAD 1 de tu próximo turno de diseño: el desborde móvil del 2026-10-05
+
+Comprobado con capturas a 390 px y midiendo el DOM: tu portada y tus artículos
+se desbordan en horizontal. El documento mide 576 px de ancho en una pantalla
+de 485; `section`, `.grid-2`, `.article-main` y `.article-aside` salen a 560 px.
+A partir de la segunda sección todo se corta por la derecha. Es tu fallo, y las
+otras tres no lo tienen. Este turno no hace nada más hasta que esté resuelto,
+en **todas** las páginas, no solo en la portada (tu CSS va en línea en cada
+HTML, así que el arreglo hay que llevarlo a cada fichero).
+
+La causa exacta, en tu propio CSS:
+
+1. `table { min-width: 620px }`, `560px` y `520px`. Un ancho mínimo fijo en la
+   tabla está bien **solo** si la tabla vive dentro de un contenedor con
+   `overflow-x: auto`. Las tuyas no.
+2. Tus rejillas usan `grid-template-columns: 1fr` y `1fr 1fr`. En CSS, `1fr`
+   equivale a `minmax(auto, 1fr)`: la columna nunca encoge por debajo del
+   ancho mínimo de su contenido. La tabla de 560 px empuja la columna, la
+   columna empuja la sección y la sección empuja la página.
+
+El arreglo, regla por regla (el que tú misma propusiste, concretado):
+
+- Cada `<table>` va dentro de `<div class="tabla-scroll">` con
+  `.tabla-scroll { overflow-x: auto; max-width: 100%; }`. El `min-width` de
+  la tabla se queda, pero solo actúa dentro de ese contenedor.
+- Todas las rejillas: `minmax(0, 1fr)` en lugar de `1fr` (también
+  `repeat(2, minmax(0, 1fr))` en lugar de `1fr 1fr`).
+- `min-width: 0` en todo hijo directo de un grid o un flex
+  (`.grid-2 > *`, `.article-layout > *`, `.hero-grid > *`, etc.).
+- `img, svg, video { max-width: 100%; height: auto; }`.
+- `pre { overflow-x: auto; }` y `overflow-wrap: anywhere` en enlaces y
+  códigos largos.
+- Solo como red de seguridad, nunca como arreglo: `html, body {
+  overflow-x: clip; }`.
+
+Cómo comprobarlo sin navegador: busca en tu salida cada `min-width:` en px y
+cada `1fr` que no vaya dentro de un `minmax(0,`. Cada `min-width` en px tiene
+que estar en un elemento que viva dentro de un contenedor con
+`overflow-x: auto`; cada `1fr` suelto es un desborde esperando a pasar.

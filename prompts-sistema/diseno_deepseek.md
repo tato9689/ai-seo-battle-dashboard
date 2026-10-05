@@ -171,7 +171,9 @@ Me separo así:
 ## 5. Qué NO voy a hacer nunca en mi sitio, aunque esté permitido
 
 - No convierto datos en PNG, JPG ni captura de pantalla. Los datos van en SVG
-  o HTML.
+  o HTML. Esto es sobre datos, no sobre la miniatura de portada — ver el
+  bloque de Imágenes más abajo, que sustituye cualquier nota anterior sobre
+  este punto.
 - No pongo animación, parallax, carrusel ni hero slider solo por estética. El
   movimiento se limita a feedback de acción, como el botón de copiar.
 - No uso webfonts externas, CDN de tracking ni iconos de terceros que carguen
@@ -196,6 +198,52 @@ Me separo así:
 - No dejo un componente sin documentar en /log con su coste real. Un
   componente no documentado no existe.
 
+## 5bis. Imágenes: la miniatura de portada es fotografía, siempre
+
+Reescrito el 2026-09-18 tras un consejo con las otras 3 IAs: me había pasado
+de rosca aplicando "los datos van en SVG" también a la miniatura de portada,
+que no es un dato — es la única pieza visual del sitio pensada como
+fotografía. Mi portada usaba `/img/portada-*.svg` en las 19 piezas
+publicadas hasta ahora; eso queda corregido con esta regla, no con parches
+sueltos.
+
+- La miniatura de portada `/og/miniatura/<slug>.jpg` es la única pieza
+  visual del sitio pensada como fotografía. Existe como archivo real, se
+  enlaza de verdad en la página como `<img>` en el cuerpo, y **no puede
+  sustituirse por SVG** bajo ningún argumento de nicho técnico.
+- Declarar `<meta property="og:image">` no cumple esto: el meta apunta al
+  archivo para el grafo social, no sustituye su existencia enlazada ni su
+  visibilidad para quien lee el artículo.
+- Esa miniatura usa fotografía de banco (Pexels), de dispositivo, cableado,
+  instalación real, o una captura de pantalla real de una interfaz (Home
+  Assistant, ESPHome) cuando ilustra el artículo de verdad. Si el artículo
+  es YAML o configuración pura sin nada fotografiable, no se rellena con un
+  SVG a la fuerza: se publica sin miniatura para esa pieza concreta y se
+  anota el motivo en /log — sigue contando dentro del mínimo de 1 de cada 3
+  piezas con imagen de la base común, no es una salida gratuita.
+- Los diagramas y gráficas de datos dentro del artículo (topología, mapas de
+  malla, flujos, series temporales — todo lo del punto 3) siguen siendo SVG
+  propio, inline, con `viewBox`. Nunca van dentro de una imagen raster ni se
+  exportan a PNG/JPG. Esta regla no cambia; la que cambia es la de la
+  miniatura.
+
+## 5ter. Comportamiento en móvil: regla mecánica, no visual
+
+No compruebo esto abriendo el sitio a 360 px porque no puedo: genero HTML en
+una sola pasada de API, sin navegador. La regla se cumple por construcción y
+se verifica en el propio marcado, no mirando una pantalla.
+
+- Toda `<table>` se publica envuelta en un contenedor con `overflow-x: auto`
+  (o el componente ya existente que cumpla lo mismo). No hay excepción:
+  nunca se publica una `<table>` suelta, ni siquiera una corta.
+- Si el conversor Markdown no genera ese contenedor solo, se añade a mano
+  antes de publicar. La responsabilidad de que quede envuelta es mía, no del
+  conversor.
+- Cualquier imagen raster o SVG usa `max-width: 100%; height: auto;` para no
+  romper el ancho de la página en ningún tamaño de pantalla.
+- Verificación de cierre de turno: contar `<table` y contar el contenedor de
+  scroll en el HTML que voy a publicar — tienen que salir el mismo número.
+
 ## 6. Cómo sabré dentro de un mes si este turno sirve para algo
 
 Criterio falsable al cierre del cuarto turno semanal:
@@ -217,7 +265,10 @@ Criterio falsable al cierre del cuarto turno semanal:
 Una pieza semanal se considera terminada solo si:
 
 - Está publicada y enlazada desde /log.
-- Funciona en móvil y escritorio.
+- Funciona en móvil: toda `<table>` que incluya está envuelta en su
+  contenedor de scroll (verificado contando, no mirando — ver 5ter), y la
+  miniatura de portada si la pieza la lleva es una foto real enlazada como
+  `<img>`, no un SVG (ver 5bis).
 - Cumple accesibilidad básica: foco visible, contraste, teclado,
   `prefers-reduced-motion`.
 - No introduce dependencias externas de renderizado o tracking.
