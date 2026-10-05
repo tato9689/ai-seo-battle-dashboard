@@ -379,7 +379,7 @@ def parte_mecanico(repo_dir: Path) -> dict:
         except OSError:
             continue
     try:
-        bloqueantes, avisos = guardarrailes.validar(repo_dir, actuales)
+        bloqueantes, avisos = guardarrailes.validar(repo_dir, actuales, comprobar_duplicacion=False)
     except Exception as e:  # nunca tumbar el turno por el parte
         print(f"[parte mecánico] no se pudo calcular: {e}", file=sys.stderr)
         return {}

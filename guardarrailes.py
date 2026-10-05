@@ -823,10 +823,17 @@ def _peso_paginas(repo_dir: Path, paginas: dict[str, str]) -> list[str]:
     return sorted(avisos)
 
 
-def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str], list[str]]:
+def validar(repo_dir: Path, archivos_nuevos: dict[str, str],
+            comprobar_duplicacion: bool = True) -> tuple[list[str], list[str]]:
     """archivos_nuevos: {ruta_relativa_posix: contenido_completo} — solo los
     ficheros que cambian este turno, ya con ruta_segura() verificada por el
-    llamador. Devuelve (bloqueantes, avisos)."""
+    llamador. Devuelve (bloqueantes, avisos).
+
+    `comprobar_duplicacion=False` se salta el difflib de `_duplicacion`: el
+    parte mecánico pasa el repo entero como "nuevo", así que compara todas las
+    páginas contra todas y con páginas de 35-48 KB no termina (el 2026-10-05
+    el turno de GPT se colgó 35 min al 99 % de CPU antes de llamar a la API,
+    con el candado de turnos cogido, y dejó sin salir a los otros tres)."""
     bloqueantes: list[str] = []
     avisos: list[str] = []
 
@@ -840,7 +847,8 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str]) -> tuple[list[str],
 
     paginas = _paginas_html(repo_dir, archivos_nuevos)
     nuevas_html = {k for k in archivos_nuevos if k.endswith(".html")}
-    bloqueantes += _duplicacion(paginas, nuevas_html)
+    if comprobar_duplicacion:
+        bloqueantes += _duplicacion(paginas, nuevas_html)
     bloqueantes += _canibalizacion(paginas)
 
     b, a = _metadatos(archivos_nuevos)
