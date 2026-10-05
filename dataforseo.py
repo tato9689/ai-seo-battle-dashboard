@@ -38,7 +38,12 @@ TIMEOUT = 20
 # céntimos, pero el número de llamadas es el freno, no el gasto — es la
 # cuenta de producción de Tato, el freno debe notarse antes de que la
 # factura lo haga.
-TOPE_LLAMADAS_MES = 60
+TOPE_LLAMADAS_MES = 200
+# Subido de 60 a 200 el 2026-10-05: desde ese día consultar el volumen antes
+# de escribir es OBLIGATORIO (base_comun, "OBJETIVO ÚNICO"), y 4 agentes al
+# día pidiendo una vez son ~240 llamadas/mes (cada consulta = 2 llamadas).
+# A ~0,05-0,09 $ por consulta completa, el tope entero ronda los 9 $/mes.
+AVISO_SIN_SALDO_PATH = BASE / "cache" / "dataforseo_sin_saldo.txt"
 
 
 def _credenciales() -> tuple[str, str] | None:
@@ -72,6 +77,35 @@ def _registrar_llamada():
     USO_PATH.write_text(json.dumps(d), encoding="utf-8")
 
 
+class SinSaldo(Exception):
+    """402 de DataForSEO: la cuenta (la de trabajo de Tato) está a cero."""
+
+
+MENSAJE_SIN_SALDO = (
+    "la cuenta de DataForSEO se ha quedado sin saldo (HTTP 402). No es el tope "
+    "compartido ni un fallo tuyo: Tato tiene que recargarla. Mientras tanto no "
+    "tienes volumen real; decide con autocompletado, Trends y tus datos de "
+    "Search Console, y vuelve a pedir el volumen en el turno siguiente."
+)
+
+
+def _avisar_sin_saldo():
+    """Telegram a Tato, una vez al día como mucho. Durante semanas este 402
+    se tragó en silencio: las IAs recibían un error que leían como "se acabó
+    el tope" y nadie se enteró de que la cuenta estaba a cero."""
+    hoy = date.today().isoformat()
+    try:
+        if AVISO_SIN_SALDO_PATH.exists() and AVISO_SIN_SALDO_PATH.read_text().strip() == hoy:
+            return
+        import avisos
+        avisos.enviar("🔴 DataForSEO sin saldo (402): las IAs de retoseo.com se quedan sin "
+                      "volumen de búsqueda, y tu MCP de DataForSEO tampoco funcionará. Recarga la cuenta.")
+        AVISO_SIN_SALDO_PATH.parent.mkdir(exist_ok=True)
+        AVISO_SIN_SALDO_PATH.write_text(hoy)
+    except Exception as e:
+        print(f"No se pudo avisar por Telegram del 402 de DataForSEO: {e}", file=sys.stderr)
+
+
 def _post(endpoint: str, keywords: list[str], creds: tuple[str, str]) -> dict:
     resp = httpx.post(
         f"https://api.dataforseo.com/v3/{endpoint}",
@@ -79,6 +113,8 @@ def _post(endpoint: str, keywords: list[str], creds: tuple[str, str]) -> dict:
         json=[{"keywords": keywords, "location_code": 2724, "language_code": "es"}],
         timeout=TIMEOUT,
     )
+    if resp.status_code == 402:
+        raise SinSaldo()
     resp.raise_for_status()
     _registrar_llamada()
     return resp.json()
@@ -116,6 +152,10 @@ def volumen_y_dificultad(keywords: list[str]) -> dict:
                     resultado[kw]["volumen_mensual"] = item.get("search_volume")
                     # LOW/MEDIUM/HIGH de pujas de Google Ads, no es "dificultad SEO" real.
                     resultado[kw]["competencia"] = item.get("competition")
+    except SinSaldo:
+        print("DataForSEO (volumen) no disponible: sin saldo (402)", file=sys.stderr)
+        _avisar_sin_saldo()
+        return {"error": MENSAJE_SIN_SALDO}
     except Exception as e:
         print(f"DataForSEO (volumen) no disponible: {e}", file=sys.stderr)
         return {"error": str(e)}
@@ -128,6 +168,9 @@ def volumen_y_dificultad(keywords: list[str]) -> dict:
                     kw = item.get("keyword")
                     if kw in resultado:
                         resultado[kw]["dificultad"] = item.get("keyword_difficulty")
+    except SinSaldo:
+        print("DataForSEO (dificultad) no disponible: sin saldo (402)", file=sys.stderr)
+        _avisar_sin_saldo()
     except Exception as e:
         # El volumen ya se cobró y ya sirve por sí solo; no tirar el resultado
         # entero por un segundo endpoint que falla.

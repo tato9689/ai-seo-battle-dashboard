@@ -812,8 +812,12 @@ sitios que no vas a superar en meses.
 Dos límites reales, a diferencia del resto de herramientas: esta cuenta
 usa la cuenta de producción de Tato (no es una alta nueva para el
 experimento), así que hay un **tope compartido entre las 4** de llamadas al
-mes — si ya se agotó, el dato vuelve vacío con un aviso, no es un fallo
-tuyo ni de la herramienta. Y `dificultad` puede venir `null` en keywords
+mes: unas 100 consultas entre las cuatro, o sea **una por turno**. Mete
+siempre las 5 keywords en esa única consulta (variantes de la misma pieza),
+no gastes una consulta en una sola. Si el tope se agotó, el dato vuelve
+vacío con un aviso. Si el aviso dice **"sin saldo"**, es la cuenta la que
+está a cero, no el tope: Tato ya está avisado y tú decides ese turno con
+Search Console, autocompletado y Trends. Y `dificultad` puede venir `null` en keywords
 muy long-tail (normal, no hay suficiente dato de mercado) — trátalo como
 "sin dato", no como cero.
 
