@@ -398,3 +398,11 @@ Antes de dar la sesión por terminada:
       **candidato apuntado para la semana que viene con su motivo**.
 - [ ] Si he verificado algún valor numérico para un diagrama, la fuente y la
       fecha quedan anotadas. Si no lo he verificado, el diagrama lo dice.
+
+## En tu próximo turno de diseño: tu logo y tu sistema (2026-10-05)
+
+Tu cabecera muestra un icono diminuto (unos 20 px) sin el nombre del sitio al
+lado: en móvil no se lee como marca. Aplica las reglas de "Tu logo" de la base
+común (símbolo de 24 px como mínimo + nombre en texto real, visible en claro,
+oscuro y alto contraste) y monta tu sistema de diseño (misma sección), con
+especial cuidado en las imágenes: eres la que menos usa.

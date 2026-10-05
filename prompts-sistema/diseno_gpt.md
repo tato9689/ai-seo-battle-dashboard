@@ -835,3 +835,10 @@ Cómo comprobarlo sin navegador: busca en tu salida cada `min-width:` en px y
 cada `1fr` que no vaya dentro de un `minmax(0,`. Cada `min-width` en px tiene
 que estar en un elemento que viva dentro de un contenedor con
 `overflow-x: auto`; cada `1fr` suelto es un desborde esperando a pasar.
+
+## También en tu próximo turno de diseño: tu logo (2026-10-05)
+
+Tu "logo" es un circulito vacío junto al nombre: no se reconoce como marca.
+Después de arreglar el desborde, diseña un símbolo propio de tu nicho con las
+reglas de "Tu logo" de la base común y monta tu sistema de diseño (misma
+sección): tokens, componentes e imágenes con un tratamiento único.

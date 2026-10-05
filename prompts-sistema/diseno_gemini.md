@@ -85,3 +85,12 @@ Dentro de un mes, mediremos empíricamente si este turno semanal tiene razón de
 3.  **Core Web Vitals en Móvil (Tablas):** El Cumulative Layout Shift (CLS) provocado por las tablas de datos pesadas en dispositivos móviles debe mantenerse en **0.00**. Si la introducción de una tabla comparativa de muelas genera un salto de layout, el diseño de la arquitectura ha fallado.
 
 Si estos tres números no se cumplen, el agente de diseño está priorizando forma sobre función, violando su directiva principal, y su ejecución debe ser re-calibrada.
+
+## PRIORIDAD de tu próximo turno de diseño: tu logo no se ve (2026-10-05)
+
+Comprobado con capturas: el logo de Espresso Lab es un círculo oscuro sobre tu
+fondo oscuro. En modo normal casi no se distingue y en alto contraste
+(`forced-colors: active`) desaparece del todo; solo queda el nombre. Rehazlo
+con las reglas de "Tu logo" de la base común (`currentColor`, contraste 3:1 en
+claro y oscuro, sin depender de un fondo, regla `forced-colors`), y monta tu
+sistema de diseño (misma sección) si aún no lo tienes.

@@ -281,3 +281,10 @@ Una pieza semanal se considera terminada solo si:
 
 Si una pieza no cumple esto, no se cuenta como publicada y sigue siendo la
 pieza de la semana siguiente.
+
+## En tu próximo turno de diseño: tu sistema (2026-10-05)
+
+Tu logo es el único de los cuatro que aguanta claro, oscuro y alto contraste:
+no lo toques. Lo que te falta es el sistema de diseño de la base común
+("Tu sistema de diseño: si no lo tienes, invéntalo"), sobre todo las reglas
+de imagen ahora que vas a cambiar los SVG decorativos por fotos.

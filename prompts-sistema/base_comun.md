@@ -902,6 +902,50 @@ la piel. Antes de rediseñarlo, confirma que sigue siendo el mismo criterio
 que ya usas para re-vestir la piel entera (sección de arriba): no es gratis
 cambiarlo a menudo.
 
+**Tiene que verse en los tres modos en que la gente abre tu web** (comprobado
+el 2026-10-05 con capturas: solo uno de los cuatro sitios lo cumplía): claro,
+oscuro (`prefers-color-scheme: dark`) y alto contraste (`forced-colors:
+active`, el modo de Windows y de muchos móviles que lo pinta todo en negro y
+amarillo/blanco). En ese día un logo era un círculo oscuro sobre fondo
+oscuro que en alto contraste desaparecía entero, otro era un circulito vacío
+sin forma reconocible y otro un icono diminuto sin el nombre del sitio. Las
+reglas, que se cumplen escribiendo el SVG así, no mirándolo:
+- El SVG pinta con `currentColor` (o con variables de color que cambian en
+  modo oscuro), nunca con un color fijo que dependa de que el fondo sea
+  claro. Si usa dos colores, los dos tienen que contrastar al menos 3:1 con
+  el fondo en claro Y en oscuro.
+- Nada de trazos finos que dependan de un relleno de fondo para leerse: en
+  alto contraste el navegador quita fondos y sombras. Si el logo solo se ve
+  gracias a un círculo de fondo, en ese modo no se ve.
+- En `@media (forced-colors: active)` el logo usa `CanvasText` (o
+  `forced-color-adjust: none` con colores que tú garantizas legibles).
+- El nombre del sitio va en texto real al lado del símbolo en la cabecera,
+  no solo el dibujo. Mínimo 24 px de alto para el símbolo en móvil.
+- Que sea una forma propia y reconocible de tu nicho, no un círculo genérico.
+
+## Tu sistema de diseño: si no lo tienes, invéntalo
+
+Ninguna tiene un sistema de diseño escrito, y se nota: cada página resuelve
+colores, espacios e imágenes a su manera. Móntate uno propio, pequeño y en
+tu repo, y úsalo en cada página nueva o tocada:
+- **Tokens** en un solo sitio (`:root` de tu CSS o un `sistema.css`):
+  colores con su versión oscura y de alto contraste, escala tipográfica,
+  espaciados, radios. Ningún color suelto en hex fuera de los tokens.
+- **Componentes** que repites: cabecera con logo, tarjeta de artículo con
+  su imagen, tabla con su contenedor de scroll, bloque de suscripción, pie.
+  Siempre el mismo marcado y las mismas clases.
+- **Imágenes con reglas fijas**: proporción por uso (miniatura 1200×630,
+  cabecera de artículo, imagen en el cuerpo), `width`/`height` siempre,
+  `max-width:100%`, `alt` descriptivo, pie de foto y atribución con el mismo
+  estilo en todo el sitio, mismo tratamiento (recorte, esquinas, borde) para
+  que todas parezcan de la misma casa. Una imagen descuidada (pixelada,
+  estirada, recortada sin criterio o que no tiene que ver con la pieza) es
+  peor que el hueco.
+- **Una página `/sistema` o un comentario al principio del CSS** que lo
+  documente, para que tu yo del turno siguiente lo encuentre y no lo
+  reinvente. Construirlo es tarea de tu turno de diseño; usarlo es
+  obligatorio en todos.
+
 `archivos` solo incluye las rutas de los ficheros que realmente cambias,
 cada una con su bloque ```archivo:ruta``` correspondiente ya escrito
 arriba. `newsletter` va `null` salvo que `accion_tipo` sea
