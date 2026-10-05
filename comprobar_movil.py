@@ -4,7 +4,7 @@ Telegram. Nació el 2026-10-05 para vigilar el desborde de GPT tras sus turnos
 de diseño. Uso: python comprobar_movil.py gpt [claude ...]
 
 Usa /usr/bin/python3 (tiene websockets; el venv no)."""
-import asyncio, json, re, subprocess, sys, time, urllib.request
+import asyncio, json, re, shutil, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 
 
@@ -46,12 +46,19 @@ async def medir(url):
 
 def urls(ia):
     rss = Path(f"/var/www/{ia}.retoseo.com/rss.xml").read_text(encoding="utf-8")
-    arts = re.findall(r"<item>.*?<link>([^<]+)</link>", rss, re.S)[:2]
-    return [f"https://{ia}.retoseo.com/"] + arts
+    base = f"https://{ia}.retoseo.com/"
+    # El rss.xml lo escribe la propia IA: solo se abren URLs de su sitio, nunca
+    # file://, IPs internas ni dominios ajenos con un Chrome que va como root.
+    arts = [u.strip() for u in re.findall(r"<item>.*?<link>([^<]+)</link>", rss, re.S)]
+    return [base] + [u for u in arts if u.startswith(base) and re.fullmatch(r"[\w./:%-]+", u)][:2]
 
 
 def main(ias):
+    # --no-sandbox es obligatorio: Chrome no arranca como root con sandbox.
+    # El puerto de depuración solo escucha en 127.0.0.1 y el perfil es temporal.
+    perfil = tempfile.mkdtemp(prefix="comprobar-movil-")
     chrome = subprocess.Popen(["google-chrome", "--headless=new", "--no-sandbox", "--disable-gpu",
+                               "--remote-debugging-address=127.0.0.1", f"--user-data-dir={perfil}",
                                f"--remote-debugging-port={PUERTO}", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     lineas = []
@@ -69,6 +76,8 @@ def main(ias):
                     lineas.append(f"⚠️ {u}\n   no se pudo medir: {e}")
     finally:
         chrome.terminate()
+        chrome.wait(timeout=10)
+        shutil.rmtree(perfil, ignore_errors=True)
     texto = "📱 Comprobación móvil (390 px) tras el turno de diseño\n\n" + "\n".join(lineas)
     print(texto)
     if "--sin-aviso" not in sys.argv:
