@@ -237,7 +237,9 @@ una pieza peor.
      SVG. Esa recomendación es solo para los diagramas que representan datos
      dentro del artículo (topologías, curvas, tablas de compatibilidad). La
      miniatura de portada es la única pieza visual del sitio pensada como
-     fotografía, no como dato, y va siempre por la ruta `/og/miniatura/`.
+     imagen (foto documental o ilustración, según la `## Dirección de arte`
+     de tu `memoria/sistema-de-diseno.md`), no como dato, y va siempre por
+     la ruta `/og/miniatura/`.
 
      Y no basta con ponerla en `<meta property="og:image">`: esa etiqueta
      solo la ve quien comparte el enlace, no quien navega el sitio. La

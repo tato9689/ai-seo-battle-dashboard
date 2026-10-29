@@ -42,22 +42,67 @@ from db import get_conn, init_db  # noqa: E402
 
 DISENADORES = ["claude", "gpt", "gemini", "deepseek"]
 
+# Reescrita el 2026-10-29 (las filas anteriores de la matriz son de otro tramo,
+# no compararlas con las nuevas). Las 42 imágenes publicadas hasta entonces
+# «cantaban a IA»: los prompts pedían, casi todos, chiaroscuro, rim light,
+# teal y ámbar, desenfoque de fondo, «sleek/premium» y un objeto heroico
+# centrado sobre superficie pulida. Ese es exactamente el aspecto de foto de
+# stock generada que cualquiera reconoce. La regla nueva: o documental creíble,
+# con desorden e imperfección reales, o ilustración gráfica que no finge ser
+# foto. Y siempre la dirección de arte del sitio, para que las imágenes de un
+# mismo sitio parezcan de la misma casa.
 INSTRUCCION = (
     "Escribe el prompt para la imagen de vista previa social (og:image, 1200x630) "
-    "de un articulo. La imagen NO va dentro de la pagina: es la miniatura que se "
-    "ve cuando alguien comparte el enlace, y su unico trabajo es conseguir el "
-    "clic.\n\n"
+    "de un articulo. Es tambien la miniatura de portada del sitio. Su trabajo es "
+    "conseguir el clic y, sobre todo, NO parecer generada por IA: si alguien la "
+    "mira dos segundos y piensa 'esto es IA', ha fallado.\n\n"
+    "Elige UNO de estos dos caminos (si el sitio tiene direccion de arte, manda "
+    "ella):\n"
+    "A) Fotografia documental creible, como la haria un fotografo de revista en "
+    "un sitio real: luz disponible y corriente (ventana, fluorescente de taller, "
+    "flash directo de compacta), angulo normal de una persona de pie, encuadre "
+    "algo imperfecto y descentrado, contexto real con su desorden (cables, "
+    "polvo, marcas de uso, cinta, notas, herramientas gastadas), colores "
+    "apagados y naturales, grano de pelicula ligero. Nombra camara y pelicula "
+    "concretas (p. ej. 'shot on a 35mm compact, Kodak Portra 400, slight grain, "
+    "on-camera flash').\n"
+    "B) Ilustracion grafica editorial que no finge ser foto: risografia o "
+    "serigrafia a 2-3 tintas planas, grabado, collage de recortes, o dibujo "
+    "tecnico a linea; paleta limitada y textura de papel/impresion.\n\n"
+    "Prohibido, porque es lo que delata a la IA: chiaroscuro o luz dramatica, "
+    "rim light, contraluz cinematografico, teal-and-orange o teal y ambar, "
+    "desenfoque de fondo exagerado, superficies impolutas o brillantes, "
+    "'sleek', 'premium', 'futuristic', 'hyperrealistic', '8k', 'cinematic', "
+    "objeto heroico centrado sobre fondo liso o degradado, objetos flotando, "
+    "hologramas, brillos y particulas, simetria perfecta, render 3D pulido.\n\n"
     "Reglas duras:\n"
-    "- NADA de texto dentro de la imagen. Los modelos escriben mal las letras y "
-    "el texto de una imagen no se lee ni se indexa. El titular lo pone la red "
-    "social encima.\n"
+    "- NADA de texto, numeros ni letras dentro de la imagen. El titular lo pone "
+    "la red social encima.\n"
     "- Sin marcas, logos ni productos identificables de terceros.\n"
-    "- Sin personas reconocibles.\n"
-    "- Composicion editorial, no foto de banco. Espacio negativo util.\n"
-    "- Concreta: sujeto, encuadre, luz, paleta, textura, profundidad.\n\n"
+    "- Sin personas reconocibles (manos o figuras de espaldas si hacen falta).\n"
+    "- Que se entienda a 300 px de ancho: un sujeto claro, no un bodegon de diez cosas.\n"
+    "- Concreta: sujeto, lugar, luz, camara/tecnica, paleta, textura.\n\n"
     "Responde SOLO con el prompt, en ingles, en un parrafo. Sin comillas, sin "
     "explicaciones, sin prefacio."
 )
+
+# Sección del sistema de diseño de cada sitio que se pasa al diseñador de la
+# imagen. Tope corto: es estilo, no un briefing, y el diseñador rota entre IAs.
+MAX_DIRECCION_ARTE = 1500
+
+
+def direccion_de_arte(repo_dir: Path) -> str:
+    """La sección «Dirección de arte» de memoria/sistema-de-diseno.md del sitio,
+    o "" si aún no la tiene. La escribe la propia IA en su turno de diseño."""
+    ruta = repo_dir / "memoria" / "sistema-de-diseno.md"
+    try:
+        texto = ruta.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    import re
+    m = re.search(r"^#{1,3}\s*Direcci[oó]n de arte[^\n]*\n(.*?)(?=^#{1,3}\s|\Z)",
+                  texto, flags=re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    return (m.group(1).strip() if m else "")[:MAX_DIRECCION_ARTE]
 
 
 def _turno_disenador(slug: str) -> str:

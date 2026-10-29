@@ -79,6 +79,11 @@ def cargar_prompt_sistema(ia: str, diseno: bool = False) -> str:
         ruta = PROMPTS_DIR / f"diseno_{ia}.md"
         if not ruta.exists():
             raise SystemExit(f"falta {ruta}: el turno de diseño de {ia} no tiene prompt")
+        # `agente_diseno.md` es el brief común de diseño (estética, móvil,
+        # imágenes, sistema de diseño). Hasta el 2026-10-29 no lo cargaba
+        # nadie: se escribió y se fue ampliando creyendo que las 4 lo leían,
+        # y ninguna lo había visto nunca. Va antes del suyo propio.
+        bloques.append((PROMPTS_DIR / "agente_diseno.md").read_text(encoding="utf-8"))
         bloques.append(ruta.read_text(encoding="utf-8"))
     return "\n\n".join(bloques)
 
@@ -123,13 +128,66 @@ def contexto_metricas(ia: str) -> dict:
     return ctx
 
 
-def contenido_actual_archivos(repo_dir: Path) -> str:
+def contenido_actual_archivos(repo_dir: Path, diseno: bool = False) -> str:
     partes = []
     for nombre in ("index.html", "log.html"):
         ruta = repo_dir / nombre
         if ruta.exists():
             partes.append(f"--- {nombre} actual ---\n{ruta.read_text(encoding='utf-8')}")
+    if diseno:
+        partes.extend(_contexto_de_diseno(repo_dir))
     return "\n\n".join(partes)
+
+
+# Topes del contexto extra del turno de diseño. Con el CSS actual de los 4
+# sitios (≤ 21 KB cada uno) entra entero; el tope solo evita que un CSS que
+# crezca sin control dispare el coste de cada turno.
+MAX_CSS_DISENO = 80_000
+MAX_ARTICULO_DISENO = 40_000
+NO_SON_ARTICULOS_DISENO = {"index.html", "log.html", "privacidad.html", "404.html"}
+
+
+def _contexto_de_diseno(repo_dir: Path) -> list[str]:
+    """Lo que el turno de diseño necesita ver y no veía: hasta el 2026-10-29
+    el agente solo recibía index.html y log.html, así que diseñaba sin ver su
+    propio CSS ni una sola página de artículo (Claude lo dijo el 27-oct: «no
+    se tocó componentes.css por no tener su contenido actual»). Un sistema de
+    diseño no se puede rehacer a ciegas."""
+    partes = []
+    ficheros = sorted(
+        r.relative_to(repo_dir).as_posix() for r in repo_dir.rglob("*")
+        if r.is_file() and ".git" not in r.parts
+        and r.suffix.lower() in (".html", ".css", ".svg", ".js", ".md"))
+    partes.append("--- listado de ficheros de tu sitio (rutas relativas, sin barra inicial) ---\n"
+                  + "\n".join(ficheros))
+
+    usado = 0
+    for rel in ficheros:
+        if not rel.endswith(".css"):
+            continue
+        texto = (repo_dir / rel).read_text(encoding="utf-8", errors="ignore")
+        if usado + len(texto) > MAX_CSS_DISENO:
+            partes.append(f"--- {rel}: omitido, el CSS supera {MAX_CSS_DISENO} caracteres en total ---")
+            continue
+        usado += len(texto)
+        partes.append(f"--- {rel} actual ---\n{texto}")
+
+    for rel in ("memoria/sistema-de-diseno.md", "memoria/next.md"):
+        ruta = repo_dir / rel
+        if ruta.exists():
+            partes.append(f"--- {rel} actual ---\n{ruta.read_text(encoding='utf-8', errors='ignore')}")
+
+    # Un artículo real de muestra, el último tocado: la plantilla de artículo
+    # es donde aterriza casi todo el tráfico de búsqueda.
+    articulos = [r for r in repo_dir.rglob("*.html")
+                 if ".git" not in r.parts and r.name not in NO_SON_ARTICULOS_DISENO
+                 and not {"componentes", "plantillas", "og"} & set(r.relative_to(repo_dir).parts)]
+    if articulos:
+        muestra = max(articulos, key=lambda r: r.stat().st_mtime)
+        rel = muestra.relative_to(repo_dir).as_posix()
+        texto = muestra.read_text(encoding="utf-8", errors="ignore")[:MAX_ARTICULO_DISENO]
+        partes.append(f"--- {rel} actual (artículo de muestra, el último tocado) ---\n{texto}")
+    return partes
 
 
 _ESCAPES_JSON_VALIDOS = set('"\\/bfnrtu')
@@ -269,8 +327,13 @@ def razonamiento_sin_json(texto: str) -> str:
 def ruta_segura(repo_dir: Path, ruta_relativa: str) -> Path:
     """La ruta de cada archivo viene del JSON que genera la propia IA — nunca
     confiar en ella sin comprobar que sigue dentro de repo_dir. Bloquea rutas
-    absolutas y cualquier '../' que intente escapar del repo del agente."""
-    destino = (repo_dir / ruta_relativa).resolve()
+    absolutas y cualquier '../' que intente escapar del repo del agente.
+
+    Una barra inicial ('/js/origen.js') se lee como relativa a la raíz del
+    sitio, que es lo que el agente quiere decir: el 2026-10-28 esa sola barra
+    tiró un turno de Claude entero, ya pagado. Quitarla no abre nada — el
+    resultado se sigue comprobando contra repo_dir justo debajo."""
+    destino = (repo_dir / ruta_relativa.lstrip("/")).resolve()
     if destino != repo_dir.resolve() and repo_dir.resolve() not in destino.parents:
         raise ValueError(f"ruta fuera del repo del agente, rechazada: {ruta_relativa!r}")
     return destino
@@ -1027,7 +1090,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         f"{bloque_dataforseo}"
         f"{bloque_consultas}"
         f"{bloque_parte}"
-        f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir)}"
+        f"Este es el contenido actual de tus archivos:\n\n{contenido_actual_archivos(repo_dir, diseno=diseno)}"
     )
     resultado = llamar_con_metadata(ia, system, user, tier=tier)
     texto = resultado["texto"]
@@ -1445,7 +1508,8 @@ def _lanzar_matriz_imagenes(ia: str, datos: dict, archivos_nuevos: dict, dry_run
     tema = (datos.get("output_resumen") or slug).strip()
     try:
         import matriz_imagenes
-        matriz_imagenes.generar(ia, slug, tema)
+        estilo = matriz_imagenes.direccion_de_arte(Path(f"/root/aisb-{ia}"))
+        matriz_imagenes.generar(ia, slug, tema, estilo)
     except Exception as e:
         print(f"[{ia}] matriz de imágenes no pudo correr para {slug}: {e}", file=sys.stderr)
 

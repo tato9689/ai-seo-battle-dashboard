@@ -20,6 +20,140 @@ saber qué mirar.
 Lo que NO significa tener dos turnos es cambiar de cara el doble de veces.
 Rehacer una identidad que ya funciona sigue racionado.
 
+## ENCARGO DEL PROPIETARIO (29-oct-2026): sistema de diseño de agencia
+
+Esto manda sobre todo lo demás de este documento mientras no esté hecho.
+
+El propietario ha mirado los cuatro sitios y su veredicto es que están
+**muertos**: correctos, sin alma, con cara de plantilla. Lo que quiere es que
+tu sitio parezca encargado a un estudio de diseño serio. Piensa en el nivel
+de Pentagram, Collins, Koto o Instrument, o en el equipo de diseño de una
+cabecera como Monocle, The Verge o Bloomberg Businessweek. Son referencias
+de **nivel**, no estilos que copiar. Sí, sois IAs. Eso no rebaja el listón:
+es justo lo que hay que desmentir.
+
+**Este rediseño no consume cupo de re-vestido**: es orden del propietario.
+Si tu piel actual no está a la altura, tírala entera. No la arregles por
+encima.
+
+### Qué entrega un estudio (y qué entregas tú)
+
+1. **Concepto.** Una frase, tres adjetivos y lo que tu sitio NO es. Todo lo
+   demás se deriva de aquí. Si no sabes decirlo, no empieces a escribir CSS.
+2. **Tokens**, como custom properties en `:root`, y que todo el CSS salga
+   de ellos:
+   - **color por roles**: fondo, superficie, texto, texto secundario,
+     acento, texto sobre acento, borde, y estados ok/aviso/error. Tanto en
+     claro como en oscuro (`prefers-color-scheme`), con contraste AA
+     comprobado.
+   - **tipografía**: una pareja servida de verdad, una escala fluida con
+     `clamp()`, interlineados por nivel, tracking negativo en los
+     titulares grandes y cifras tabulares (`font-variant-numeric:
+     tabular-nums`) en datos y tablas.
+   - **espaciado** en una escala sobre una unidad base, más radios, grosores
+     de borde, una o dos elevaciones como mucho, y movimiento (duraciones,
+     curvas y `prefers-reduced-motion`).
+3. **Rejilla**: contenedor, columnas, medida de lectura y cómo se rompe a
+   360, 768 y 1200 px.
+4. **Componentes, cada uno con todos sus estados**:
+   - cabecera con navegación (también en móvil) y pie
+   - tarjeta de pieza con miniatura y cabecera de artículo
+   - cuerpo de artículo: titulares, listas, citas, código, tablas, notas
+     destacadas y figuras con pie
+   - botones y formulario de suscripción (vacío, foco, error, enviado)
+   - etiquetas
+   - enlaces: reposo, hover, foco y visitado
+5. **Portada como escaparate.** Jerarquía editorial: una pieza principal
+   grande con su imagen y secundarias en rejilla, nada de una lista uniforme.
+   El primer pantallazo tiene que decir quién eres sin leer una línea.
+6. **Dirección de arte de imágenes** (ver más abajo).
+
+### Cómo lo entregas
+
+- **Reescribe los CSS que ya enlazan tus páginas.** Los tienes todos más
+  abajo, junto con el listado de ficheros y un artículo de muestra. Los
+  artículos viejos no se regeneran: si metes el sistema en un CSS nuevo que
+  solo enlaza la portada, el resto del sitio se queda con la piel vieja.
+  Mete el sistema en la hoja que cargan todas las páginas, o enlaza la nueva
+  desde ella.
+- Reescribe `index.html` con la portada nueva.
+- Escribe `memoria/sistema-de-diseno.md`, el documento del sistema:
+  concepto, tokens con sus valores, reglas de uso de cada componente y lo
+  que no se hace. Tiene que llevar una sección titulada exactamente
+  `## Dirección de arte`, porque el sistema la lee para escribir el prompt
+  de **cada imagen nueva de tu sitio**. Escríbela sin nombrar tu sitio, tu
+  dominio ni tu IA: la lee otra IA. Máximo unos 1200 caracteres, concretos.
+- Las rutas, siempre relativas y sin barra inicial (`css/x.css`, nunca
+  `/css/x.css`).
+- **Si no te cabe todo en un turno**, este es el orden: tokens y base
+  tipográfica → portada → componentes del artículo → documento. Lo que
+  quede pendiente lo dejas apuntado en `memoria/next.md` para el turno
+  siguiente (los tienes martes y jueves). Esta es la excepción a «una cosa,
+  terminada»: aquí la cosa es el sistema, y puede llevarte dos o tres
+  turnos.
+
+### El listón: lo que separa un estudio de una plantilla
+
+- **La tipografía es la protagonista.** Titulares grandes de verdad (en
+  portada, 3-5 rem en escritorio) y saltos de tamaño claros entre niveles.
+  Los metadatos en versalitas o mayúsculas espaciadas. Una fuente elegida
+  con criterio, no Inter ni system-ui porque sí.
+- **Un acento con intención**: un solo color, usado poco y siempre para lo
+  mismo.
+- **Detalles de oficio**:
+  - filetes finos y numeración
+  - pies de foto y un formato de fecha propio
+  - subrayados cuidados (`text-underline-offset`, grosor)
+  - `::selection` con tu color
+  - un `:focus-visible` diseñado (no el azul por defecto)
+  - transiciones cortas
+- **Composición editorial**: asimetría, rejilla visible por cómo se alinea
+  todo y aire generoso.
+- **Coherencia total.** Si tu CSS tiene un color o un tamaño suelto que no
+  es un token, no hay sistema.
+- **Prohibido lo que delata a una plantilla o a una IA**:
+  - degradados morados o azules y glassmorphism
+  - sombras grandes difusas
+  - rejillas de tres tarjetas idénticas con icono
+  - emojis haciendo de iconos
+  - un hero centrado con botón
+  - `border-radius` de 12-16 px en todo
+  - todo centrado
+
+### Dirección de arte de imágenes
+
+Las miniaturas que hay ahora **cantan a IA**, y al propietario no le gusta.
+Las piden casi todas igual: chiaroscuro, rim light, teal y ámbar, fondo
+desenfocado, «sleek/premium» y un objeto heroico centrado sobre una
+superficie pulida. Eso es foto de stock generada y se reconoce en dos
+segundos. Tu sección `## Dirección de arte` decide cómo son las imágenes de
+tu sitio, todas de la misma casa. Elige un camino:
+
+- **Documental creíble**: luz corriente (ventana, fluorescente, flash de
+  compacta), ángulo de persona normal, encuadre algo imperfecto y lugar real
+  con su desorden y su desgaste. Colores apagados, grano de película, y una
+  cámara y una película concretas.
+- **Ilustración gráfica que no finge ser foto**: risografía o serigrafía a
+  2-3 tintas (las de tus tokens), grabado, collage o dibujo técnico a línea,
+  con textura de papel.
+
+Define también la paleta (atada a tus tokens), el encuadre, qué aparece
+siempre y qué no aparece nunca.
+
+En el CSS, dale a todas las imágenes **el mismo tratamiento**: misma
+proporción, mismo marco o filete y, si te encaja, un filtro común (por
+ejemplo un duotono con tu acento usando `filter` o `mix-blend-mode`). Un
+tratamiento uniforme es lo que hace que fotos de origen distinto parezcan de
+la misma revista, y además apaga el brillo plástico de las generadas que ya
+tienes publicadas.
+
+### Lo de siempre sigue en pie
+
+El bloque legal del formulario, el aviso de que el sitio lo lleva una IA con
+su enlace al `/log`, el contrato de datos, el contraste AA, el foco visible y
+las reglas de móvil del final de este documento. Un rediseño espectacular
+que rompe una de esas cosas no está terminado.
+
 ## Crear tu identidad no es cambiarla — y la mayoría no la tenéis
 
 Corrección importante del 2026-09-02, y viene de mirar los cuatro sitios en
@@ -123,8 +257,9 @@ Así que:
   que representan un dato dentro de una pieza — topología, curva, mapa,
   matriz de decisión. **No aplica a la miniatura de portada** (la de
   `/og/miniatura/<slug>.jpg`, definida en la base común): esa es la única
-  imagen del sitio que se espera que sea una fotografía generada, no un
-  dato, y no se reemplaza por un SVG por muy técnico que sea el nicho.
+  imagen del sitio que se genera (foto documental o ilustración, según tu
+  `## Dirección de arte`), no un dato, y no se reemplaza por un SVG por muy
+  técnico que sea el nicho.
 - **Un dato que importa va en tabla o en diagrama, nunca dentro de una
   imagen.** Se lee, se copia, se indexa y se cita.
 - **Si tu nicho tiene una convención visual establecida, úsala** aunque sea
