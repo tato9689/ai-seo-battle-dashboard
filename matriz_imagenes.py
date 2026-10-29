@@ -86,6 +86,14 @@ INSTRUCCION = (
     "explicaciones, sin prefacio."
 )
 
+# Remate que se añade a TODO prompt antes de mandarlo a los generadores (el
+# mismo a los dos, así la matriz sigue comparando lo mismo). En la primera
+# prueba del 29-oct, nombrar la película («Kodak Portra 400») hizo que Gemini
+# dibujara el borde del negativo con el nombre impreso: texto dentro de la
+# imagen, justo lo prohibido.
+REMATE = ("Full-bleed image filling the whole frame: no borders, no film frame, "
+          "no film edge markings, no captions, no text, letters or numbers anywhere.")
+
 # Sección del sistema de diseño de cada sitio que se pasa al diseñador de la
 # imagen. Tope corto: es estilo, no un briefing, y el diseñador rota entre IAs.
 MAX_DIRECCION_ARTE = 1500
@@ -167,6 +175,7 @@ def generar(ia: str, slug: str, tema: str, estilo: str = "", disenador: str | No
 
     print(f"[matriz] {slug}: disena {disenador}, generan {disponibles}")
     p = escribir_prompt(disenador, tema, estilo)
+    p["prompt"] = f"{p['prompt'].rstrip()} {REMATE}"
     coste_txt = f"${p['coste_usd']:.4f}" if p["coste_usd"] is not None else "coste desconocido (sin precio para el modelo)"
     print(f"[matriz] prompt ({p['modelo']}, {coste_txt}): {p['prompt'][:120]}...")
 

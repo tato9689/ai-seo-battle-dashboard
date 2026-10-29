@@ -169,7 +169,8 @@ ANTI_IA = (
     "teal-and-orange, no heavy bokeh, no glossy spotless surfaces, no sleek, "
     "premium, cinematic or 3D-render look, no centered hero object on a plain "
     "background, no floating objects. No text, letters, numbers, logos or "
-    "recognizable people in the image."
+    "recognizable people in the image. Full-bleed: no borders, no film frame, "
+    "no film edge markings."
 )
 MAX_GENERADAS = 1
 
