@@ -1093,6 +1093,16 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         # quedarse sin turnos.
         print(f"[{ia}] {presu['motivo']}")
         tier = "diaria"
+    elif diseno and tier == "diaria":
+        # Desde el 2026-10-29 el turno de diseño va siempre con el modelo
+        # capaz salvo que su bote esté cerca del tope (rama de arriba). Ese
+        # mismo día Claude corrió dos turnos de diseño con Haiku porque se
+        # puso «barato» mirando su bote de CONTENIDO (92 %), no el de diseño
+        # (47 %), y Haiku esquivó el encargo del sistema de diseño las dos
+        # veces arreglando avisos sueltos. El bote de diseño existe para pagar
+        # el modelo capaz: dejar que se elija el barato vacía su motivo.
+        print(f"[{ia}] turno de diseño: se usa el modelo capaz (pedía '{tier}')")
+        tier = "semanal"
     elif presu["impulsar"] and tier == "diaria":
         # Simétrico al freno de arriba: si el gasto real va muy por detrás
         # del ritmo que hace falta para agotar el bote a fin de mes, se le

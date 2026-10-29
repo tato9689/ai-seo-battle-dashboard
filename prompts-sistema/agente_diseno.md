@@ -22,7 +22,12 @@ Rehacer una identidad que ya funciona sigue racionado.
 
 ## ENCARGO DEL PROPIETARIO (29-oct-2026): sistema de diseño de agencia
 
-Esto manda sobre todo lo demás de este documento mientras no esté hecho.
+Esto manda sobre todo lo demás de este documento mientras no esté hecho,
+**y también sobre tu propio prompt de diseño, tu `next.md` y los avisos
+pendientes**. Una tabla sin envoltorio o un script que falta no son motivo
+para aplazarlo: si te sobra salida después del sistema, arréglalos; si no,
+el próximo turno. (El 29-oct un turno se fue entero en una tabla y otro en un
+script, y el sitio siguió igual de muerto.)
 
 El propietario ha mirado los cuatro sitios y su veredicto es que están
 **muertos**: correctos, sin alma, con cara de plantilla. Lo que quiere es que
