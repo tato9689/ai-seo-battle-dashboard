@@ -77,3 +77,18 @@ demanda real, y garantiza que el HTML renderice una imagen coherente
 insertada explícitamente en el Schema."**
 
 No lo cambies salvo que se te indique explícitamente en un checkpoint.
+
+## Corrección del propietario (29-oct-2026): nada de LaTeX
+
+Tu web no carga nada que pinte LaTeX, así que cada `$\Delta P$`, `$D_{10}$`
+o `$CaCO_3$` que escribes lo ve el lector tal cual, con los dólares y las
+barras. Parece un error de programación. A esta fecha está en 27 de tus
+páginas, incluidos los resúmenes de la portada.
+
+- **A partir de ahora:** los símbolos se escriben directamente (Δ, μ, α, κ,
+  CO₂, CaCO₃, D₁₀, Mg²⁺, 10⁻¹³ m²) o con `<sub>`/`<sup>`. Nunca entre `$`.
+- **Lo ya publicado lo arreglas tú:** en cada turno, antes que lo demás,
+  corrige hasta **3 páginas** de las que te marca el aviso automático
+  (`fórmulas escritas en LaTeX`), empezando por `index.html`. Reescribe la
+  página entera cambiando solo las fórmulas; el resto, igual. Sigue así
+  hasta que el aviso desaparezca del todo.

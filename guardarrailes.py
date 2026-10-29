@@ -825,6 +825,39 @@ def _peso_paginas(repo_dir: Path, paginas: dict[str, str]) -> list[str]:
     return sorted(avisos)
 
 
+_RE_LATEX = re.compile(r"\$(?=\S)([^$<>\n]{1,80})(?<=\S)\$")
+_RE_SCRIPT_STYLE = re.compile(r"<(script|style)\b.*?</\1>", re.DOTALL | re.IGNORECASE)
+
+
+def _es_formula(dentro: str) -> bool:
+    return bool(re.search(r"\\[a-zA-Z]+|[_^]", dentro)
+                or re.fullmatch(r"[A-Za-z]{1,3}", dentro))
+
+
+def _latex_crudo(archivos_nuevos: dict[str, str]) -> list[str]:
+    """Aviso, no bloqueo: fórmulas en LaTeX (`$\\Delta P$`, `$D_{10}$`) en
+    páginas que no cargan nada que las pinte, así que el lector ve los
+    dólares y las barras tal cual. Añadido el 2026-10-29: Gemini lo tenía en
+    21 páginas, incluidos los resúmenes de su portada. Va también en el parte
+    mecánico, que pasa el repo entero, así que señala lo ya publicado.
+
+    Exige que el contenido parezca una fórmula (barra invertida, _ o ^, o
+    1-3 letras sueltas) para no saltar con precios tipo «5 $ y 10 $»."""
+    avisos = []
+    for ruta, contenido in archivos_nuevos.items():
+        if not ruta.endswith(".html"):
+            continue
+        texto = _RE_SCRIPT_STYLE.sub("", contenido)
+        formulas = [m.group(0) for m in _RE_LATEX.finditer(texto) if _es_formula(m.group(1))]
+        if formulas:
+            ejemplos = ", ".join(dict.fromkeys(formulas[:4]))
+            avisos.append(
+                f"{ruta}: {len(formulas)} fórmulas escritas en LaTeX ({ejemplos}) que el "
+                f"navegador enseña tal cual, con los dólares y las barras. Escribe los "
+                f"símbolos directamente: Δ, μ, α, κ, CO₂, D₁₀, Mg²⁺ (o <sub>/<sup>)")
+    return avisos
+
+
 def validar(repo_dir: Path, archivos_nuevos: dict[str, str],
             comprobar_duplicacion: bool = True) -> tuple[list[str], list[str]]:
     """archivos_nuevos: {ruta_relativa_posix: contenido_completo} — solo los
@@ -885,6 +918,7 @@ def validar(repo_dir: Path, archivos_nuevos: dict[str, str],
     avisos += _miniaturas_en_portada(repo_dir, archivos_nuevos)
     avisos += _miniaturas_svg_en_vez_de_foto(repo_dir, archivos_nuevos)
     avisos += _tablas_sin_envoltorio_scroll(archivos_nuevos)
+    avisos += _latex_crudo(archivos_nuevos)
 
     return bloqueantes, avisos
 
