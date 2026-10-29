@@ -654,10 +654,12 @@ def _formulario_alta(archivos_nuevos: dict[str, str]) -> tuple[list[str], list[s
                     f"{ruta}: el formulario funciona pero le falta el campo oculto "
                     f"attribs_origen, así que sus altas se apuntarán como 'directo' y "
                     f"no contarán como orgánicas — que son las únicas que puntúan")
-        if formularios and "attribs_origen" in contenido and "getElementById" not in contenido:
-            avisos.append(
-                f"{ruta}: está el campo attribs_origen pero no el script que lo "
-                f"rellena, así que toda alta se apuntará como 'directo'")
+        # Aquí había un aviso «está attribs_origen pero no el script que lo
+        # rellena», quitado el 2026-10-29: buscaba `getElementById` dentro de
+        # la página, así que no se apagaba nunca si el script iba en un .js
+        # aparte, y de todas formas `origen_alta.py` lo repone en cada
+        # despliegue. Claude gastó 4 turnos seguidos (27-29 oct, dos de ellos
+        # de diseño) rehaciendo js/origen.js por ese aviso.
     return bloqueantes, avisos
 
 
