@@ -33,6 +33,10 @@ Cada evento:
   "feeds_recibidos": ["que feeds se leyeron en este turno"],
   "keywords_siguiente_turno": ["warping petg bambu a1"],
   "keywords_recibidas": ["que keywords se consultaron en DataForSEO"],
+  "videos_siguiente_turno": ["cambiar boquilla impresora 3d"],
+  "commons_siguiente_turno": ["filament spool"],
+  "imagen_generada_siguiente_turno": {"nombre": "boquilla-atascada", "descripcion": "..."},
+  "enriquecer_recibido": ["videos_youtube", "fotos_wikimedia_commons", "imagen_generada"],
   "tier_usado": "diaria",
   "envio": {"enviado": true, "campana_id": 12, "asunto": "...", "suscriptores": 34},
   "avisos": ["todo el sitio sigue sirviendo solo reset.css: nunca has vestido..."],
@@ -62,6 +66,12 @@ false` con el motivo — sin suscriptores confirmados, bloqueado por
 guardarraíles o error de Listmonk). Va en el log público porque los
 suscriptores son el KPI que decide el experimento, y hasta hoy no había forma
 de saber desde fuera si un envío había salido.
+
+`videos_siguiente_turno`, `commons_siguiente_turno` e
+`imagen_generada_siguiente_turno` / `enriquecer_recibido` (añadidos
+2026-10-29, `enriquecer.py`) siguen el mismo patrón, con una diferencia: solo
+se atienden si están en el evento MÁS RECIENTE, porque la imagen generada
+cuesta y una petición vieja no debe volver a servirse sola.
 
 `feeds_siguiente_turno`/`feeds_recibidos` y `keywords_siguiente_turno`/
 `keywords_recibidas` (añadidos 2026-08-30, tras la auditoría de

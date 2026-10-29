@@ -46,6 +46,7 @@ import portada  # noqa: E402
 import presupuesto  # noqa: E402
 import busqueda  # noqa: E402
 import imagenes  # noqa: E402
+import enriquecer  # noqa: E402
 import feeds  # noqa: E402
 import dataforseo  # noqa: E402
 import tendencias  # noqa: E402
@@ -651,6 +652,48 @@ def contexto_imagenes(repo_dir: Path) -> dict:
     return salida
 
 
+def _pedido_del_ultimo_turno(repo_dir: Path, campo: str):
+    """El valor de `campo` en el evento más reciente del log, o None. Solo el
+    último: a diferencia de las fotos de Pexels (gratis), aquí hay llamadas
+    que cuestan, y una petición vieja no debe volver a servirse sola."""
+    try:
+        eventos = json.loads((repo_dir / "log.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(eventos, list) or not eventos or not isinstance(eventos[0], dict):
+        return None
+    return eventos[0].get(campo)
+
+
+def _consultas(valor) -> list[str]:
+    if not isinstance(valor, list):
+        return []
+    return [str(c)[:200] for c in valor if isinstance(c, str) and c.strip()][:enriquecer.MAX_CONSULTAS]
+
+
+def contexto_enriquecer(repo_dir: Path, dry_run: bool = False) -> dict:
+    """Vídeos de YouTube verificados, fotos de Wikimedia Commons con licencia
+    libre y una imagen generada, pedidos en el turno anterior. Añadido el
+    2026-10-29. Como las búsquedas: si algo falla, el turno sigue."""
+    salida = {}
+    for campo, clave, fn in (("videos_siguiente_turno", "videos_youtube", enriquecer.videos),
+                             ("commons_siguiente_turno", "fotos_wikimedia_commons", enriquecer.commons)):
+        for consulta in _consultas(_pedido_del_ultimo_turno(repo_dir, campo)):
+            try:
+                salida.setdefault(clave, {})[consulta] = fn(consulta)
+            except Exception as e:
+                salida.setdefault(clave, {})[consulta] = {"error": str(e)[:200]}
+    peticion = _pedido_del_ultimo_turno(repo_dir, "imagen_generada_siguiente_turno")
+    if isinstance(peticion, dict) and not dry_run:
+        try:
+            import matriz_imagenes
+            salida["imagen_generada"] = enriquecer.generada(
+                repo_dir, peticion, matriz_imagenes.direccion_de_arte(repo_dir))
+        except Exception as e:
+            salida["imagen_generada"] = {"error": str(e)[:200]}
+    return salida
+
+
 def feeds_pedidos(repo_dir: Path) -> list[str]:
     """Mismo patrón que `imagenes_pedidas`: URLs de feed (RSS/Atom, incluido
     `.../releases.atom` de GitHub) que el agente pidió seguir en su turno
@@ -982,6 +1025,17 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "— si usas una, `atribucion_html` va tal cual junto a la imagen, "
             "no lo resumas ni lo quites:\n"
             f"{json.dumps(resultados_imagenes, ensure_ascii=False)}\n\n"
+        )
+    resultados_enriquecer = contexto_enriquecer(repo_dir, dry_run=dry_run)
+    if resultados_enriquecer:
+        bloque_imagenes += (
+            "Material para enriquecer que pediste en tu turno anterior "
+            "(vídeos de YouTube que existen de verdad y se pueden incrustar, "
+            "fotos libres de Wikimedia Commons, tu imagen generada ya guardada "
+            "en tu repo). Si usas un vídeo o una foto, su `embed_html` / "
+            "`atribucion_html` va tal cual, sin resumir ni quitar el crédito. "
+            "Nunca escribas un ID de YouTube que no venga de aquí:\n"
+            f"{json.dumps(resultados_enriquecer, ensure_ascii=False)}\n\n"
         )
     resultados_feeds = contexto_feeds(repo_dir)
     bloque_feeds = ""
@@ -1396,6 +1450,12 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         # turno, y qué le llegó de las que pidió en el anterior.
         "imagenes_siguiente_turno": datos.get("imagenes_siguiente_turno"),
         "imagenes_recibidas": sorted(resultados_imagenes) or None,
+        # Mismo patrón, añadido 2026-10-29: vídeos, fotos de Commons y una
+        # imagen generada para el próximo turno.
+        "videos_siguiente_turno": datos.get("videos_siguiente_turno"),
+        "commons_siguiente_turno": datos.get("commons_siguiente_turno"),
+        "imagen_generada_siguiente_turno": datos.get("imagen_generada_siguiente_turno"),
+        "enriquecer_recibido": sorted(resultados_enriquecer) or None,
         # Mismo patrón: feeds RSS/Atom para el próximo turno, y los que
         # llegaron de los que pidió en el anterior. Añadido 2026-08-30.
         "feeds_siguiente_turno": datos.get("feeds_siguiente_turno"),

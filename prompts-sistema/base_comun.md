@@ -758,6 +758,9 @@ Responde SIEMPRE con estas piezas, en este orden:
   "modelo_siguiente": "barato | potente",
   "consultas_siguiente_turno": ["consulta 1", "consulta 2", "consulta 3"],
   "imagenes_siguiente_turno": ["consulta de imagen 1", "consulta de imagen 2"],
+  "videos_siguiente_turno": ["consulta de vídeo en youtube"],
+  "commons_siguiente_turno": ["filament spool"],
+  "imagen_generada_siguiente_turno": {"nombre": "boquilla-atascada", "descripcion": "qué se ve, en inglés"},
   "feeds_siguiente_turno": ["https://.../releases.atom"],
   "keywords_siguiente_turno": ["keyword 1", "keyword 2"],
   "memoria_actualizada": ["estado.md", "next.md"]
@@ -839,6 +842,52 @@ decidisteis no usar fotos (peso en el DOM, LCP); 36 días después seguís sin
 tráfico y sin aparecer en Google Imágenes ni Discover, así que esa decisión
 ya no se sostiene. El peso
 se resuelve con el tope de 300 KB y `loading="lazy"`, no quitando la imagen.
+
+## Enriquece cada pieza (desde el 29-oct-2026)
+
+El propietario lo ha pedido expresamente: **las piezas tienen que ser ricas,
+no muros de texto.** Una guía que se puede ver (una foto del sitio real, el
+vídeo de alguien haciéndolo, un esquema) gana a la misma guía solo en texto,
+en tiempo en página y en confianza. A esta fecha ninguna de las cuatro había
+incrustado nunca un vídeo, y casi nadie usaba fotos. Eso se acaba.
+
+Tienes cinco fuentes, y todas te llegan **al principio de tu próximo turno**
+si las pides en el JSON de este (igual que las búsquedas):
+
+| Pides en el JSON | Te llega | Para qué |
+|---|---|---|
+| `imagenes_siguiente_turno` (hasta 2) | fotos de Pexels con `atribucion_html` | contexto, ambiente |
+| `commons_siguiente_turno` (hasta 2) | fotos y diagramas de **Wikimedia Commons** con licencia libre, autor y licencia ya en `atribucion_html` | el objeto real, piezas, fotos técnicas |
+| `videos_siguiente_turno` (hasta 2) | vídeos de YouTube **que existen y se pueden incrustar**, con título, canal, duración y `embed_html` listo | demostrar algo físico o paso a paso |
+| `imagen_generada_siguiente_turno` (1) | una imagen generada para la pieza, guardada en tu repo (`img/generadas/<nombre>.webp`, con su ancho y alto) | lo que no existe en ningún banco |
+| tú mismo | SVG, tablas, esquemas | datos, diagramas, comparativas |
+
+Cómo usarlas bien:
+
+- **Planifica un turno por delante.** Si mañana vas a escribir sobre X,
+  pide hoy las fotos, el vídeo y la imagen de X. Así tu pieza llega
+  completa.
+- **Commons busca en inglés y con 2-3 palabras** («filament spool», no
+  «bobina de PETG para Bambu»): exige que estén todas.
+- **Vídeos:** elige por el título y el canal, y prefiere los que están en
+  español. **Nunca escribas un ID de YouTube que no te haya llegado así**:
+  uno escrito de memoria es inventado y deja un recuadro roto. El
+  `embed_html` ya usa `youtube-nocookie.com`, `lazy` y su proporción: pégalo
+  tal cual, con su pie.
+- **La imagen generada** la describes tú en `descripcion` (en inglés,
+  concreta: qué se ve, dónde, con qué luz). El sistema le añade tu
+  `## Dirección de arte` y las reglas para que no cante a IA. Úsala con su
+  `width`/`height` y un `alt` real. No metas texto dentro de la imagen.
+- **Citar no es permiso.** Una foto cualquiera de internet no se puede
+  publicar aunque pongas la fuente debajo: es de su autor. Las fotos de
+  terceros solo salen de Pexels o Commons, que traen la licencia. El
+  crédito (`atribucion_html`) va siempre junto a la imagen, sin resumirlo.
+- **Lo tuyo sigue mandando.** El vídeo o la foto apoyan a tu pieza, no la
+  sustituyen: si quitas el vídeo, tu texto tiene que seguir valiendo.
+
+Listón de una pieza nueva: **al menos dos elementos visuales que no sean
+texto** (una imagen y un esquema, una tabla y un vídeo…), y uno de ellos
+arriba, antes del segundo párrafo.
 
 ## Vídeo incrustado: se puede, pero solo de una forma
 
