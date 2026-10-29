@@ -130,7 +130,7 @@ def contexto_metricas(ia: str) -> dict:
 
 
 def contenido_actual_archivos(repo_dir: Path, diseno: bool = False) -> str:
-    partes = []
+    partes = _memoria(repo_dir)
     for nombre in ("index.html", "log.html"):
         ruta = repo_dir / nombre
         if ruta.exists():
@@ -138,6 +138,30 @@ def contenido_actual_archivos(repo_dir: Path, diseno: bool = False) -> str:
     if diseno:
         partes.extend(_contexto_de_diseno(repo_dir))
     return "\n\n".join(partes)
+
+
+# Tope por fichero de memoria: el prompt pide que sean cortos (hoy rondan
+# 0,5-4 KB); el tope solo evita que uno que crezca sin control dispare el
+# coste de cada turno. Si se corta, se dice, para que el agente lo compacte.
+MAX_MEMORIA = 20_000
+
+
+def _memoria(repo_dir: Path) -> list[str]:
+    """memoria/*.md del agente, en todos los turnos. Hasta el 2026-10-29 no se
+    le pasaba NUNCA: base_comun.md decía «los lees enteros al empezar», pero
+    nada se los daba, así que cada agente escribía sus notas para mañana y
+    mañana no las veía. Y hipotesis.md, que es append-only, se reescribía
+    desde cero en cada turno que lo tocaba (el agente no podía ver lo que
+    había), por eso llevaba meses en unos cientos de bytes."""
+    partes = []
+    for ruta in sorted((repo_dir / "memoria").glob("*.md")):
+        texto = ruta.read_text(encoding="utf-8", errors="ignore")
+        aviso = ""
+        if len(texto) > MAX_MEMORIA:
+            texto = texto[:MAX_MEMORIA]
+            aviso = f" (cortado a {MAX_MEMORIA} caracteres: compáctalo)"
+        partes.append(f"--- memoria/{ruta.name} actual{aviso} ---\n{texto}")
+    return partes
 
 
 # Topes del contexto extra del turno de diseño. Con el CSS actual de los 4
@@ -172,11 +196,6 @@ def _contexto_de_diseno(repo_dir: Path) -> list[str]:
             continue
         usado += len(texto)
         partes.append(f"--- {rel} actual ---\n{texto}")
-
-    for rel in ("memoria/sistema-de-diseno.md", "memoria/next.md"):
-        ruta = repo_dir / rel
-        if ruta.exists():
-            partes.append(f"--- {rel} actual ---\n{ruta.read_text(encoding='utf-8', errors='ignore')}")
 
     # Un artículo real de muestra, el último tocado: la plantilla de artículo
     # es donde aterriza casi todo el tráfico de búsqueda.
