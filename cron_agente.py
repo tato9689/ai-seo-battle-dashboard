@@ -64,7 +64,7 @@ PROMPTS_DIR = DASHBOARD_DIR / "prompts-sistema"
 # puede importar de aquí sin crear un ciclo (aquí ya se importa de clientes).
 
 
-def cargar_prompt_sistema(ia: str, diseno: bool = False) -> str:
+def cargar_prompt_sistema(ia: str, diseno: bool = False, auditoria: bool = False) -> str:
     """base + personalidad, y en el turno semanal de diseño un tercer bloque.
 
     `diseno_<ia>.md` lo escribió cada agente para sí misma en el consejo del
@@ -86,6 +86,9 @@ def cargar_prompt_sistema(ia: str, diseno: bool = False) -> str:
         # y ninguna lo había visto nunca. Va antes del suyo propio.
         bloques.append((PROMPTS_DIR / "agente_diseno.md").read_text(encoding="utf-8"))
         bloques.append(ruta.read_text(encoding="utf-8"))
+    if auditoria:
+        # Común a las 4: no cuenta nada de ningún nicho, solo el método de auditarse con sus propios datos.
+        bloques.append((PROMPTS_DIR / "auditoria.md").read_text(encoding="utf-8"))
     return "\n\n".join(bloques)
 
 
@@ -936,7 +939,7 @@ def base_url_agente(ia: str) -> str:
     return log_url[: -len("/log.json")] if log_url.endswith("/log.json") else ""
 
 
-def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
+def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False, auditoria: bool = False):
     # Crea las tablas si faltan (idempotente): el cron del agente puede correr
     # antes que el del poller el primer día, y todo lo que registra después
     # —indexación, presupuesto— necesita que el esquema exista.
@@ -954,7 +957,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         print(f"No existe {repo_dir} — crea el repo del agente primero.", file=sys.stderr)
         sys.exit(1)
 
-    system = cargar_prompt_sistema(ia, diseno=diseno)
+    system = cargar_prompt_sistema(ia, diseno=diseno, auditoria=auditoria)
     ctx = contexto_metricas(ia)
     if diseno:
         # Explícito y no solo "turno de diseño": la sección de cadencia de
@@ -970,6 +973,15 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "resuelve mejor la pieza de diseño que has elegido en vez de añadir "
             "un artículo. El `accion_tipo` de hoy no puede ser crear-articulo "
             "ni actualizar-articulo"
+        )
+    elif auditoria:
+        # Mismo problema que con el de diseño: la cadencia mínima de contenido de base_comun.md sigue
+        # delante en el prompt y empujaría a publicar una pieza. Aquí se le dice que hoy no.
+        tarea = (
+            "tu AUDITORÍA semanal (turno de los domingos). Hoy NO publicas ninguna pieza de contenido "
+            "ni tocas ninguna página: la cadencia mínima de contenido no aplica a este turno y la cubren "
+            "tus turnos diarios. Sigue al pie de la letra la sección «Tu auditoría semanal». El "
+            "`accion_tipo` de hoy es auditoria-semanal y solo escribes ficheros de memoria/"
         )
     elif newsletter:
         tarea = "la newsletter semanal"
@@ -1105,13 +1117,19 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
     # que se da una vez por semana y produce componentes que reutilizan todos
     # los turnos diarios siguientes, así que es de los pocos sitios donde el
     # modelo capaz se amortiza. A partir del segundo, manda su propia elección.
-    tier = tier_elegido(repo_dir, por_defecto="diaria" if not (newsletter or diseno) else "semanal",
+    tier = tier_elegido(repo_dir, por_defecto="diaria" if not (newsletter or diseno or auditoria) else "semanal",
                         solo_tipo="diseno" if diseno else None)
     if presu["degradar"] and tier == "semanal":
         # Cerca del tope: una newsletter con el modelo pequeño es mejor que
         # quedarse sin turnos.
         print(f"[{ia}] {presu['motivo']}")
         tier = "diaria"
+    elif auditoria and tier == "diaria":
+        # Una auditoría con el modelo barato sale en un resumen de actividad, que es justo lo que NO
+        # se quiere. Es un turno por semana: el modelo capaz se amortiza (salvo bote cerca del tope,
+        # que ya se resolvió en la rama de arriba).
+        print(f"[{ia}] auditoría semanal: se usa el modelo capaz (pedía '{tier}')")
+        tier = "semanal"
     elif diseno and tier == "diaria":
         # Desde el 2026-10-29 el turno de diseño va siempre con el modelo
         # capaz salvo que su bote esté cerca del tope (rama de arriba). Ese
@@ -1300,6 +1318,11 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         # importa antes de un lanzamiento: ¿este turno se habría publicado?
         # Así que pasa por los mismos guardarraíles que el turno real.
         print("--dry-run: no se escribe ni commitea nada.")
+        # El razonamiento es lo que se publicaría tal cual en el /log: se enseña para poder juzgar la
+        # calidad antes de un lanzamiento (hasta ahora solo salía el resumen de una línea).
+        print("--- razonamiento (lo que iría al /log) ---")
+        print(razonamiento[:7000])
+        print("--- fin del razonamiento ---")
         bloques_archivo = extraer_bloques_archivo(texto)
         try:
             prueba = {
@@ -1346,7 +1369,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelo_exacto": resultado["modelo"],
-            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
+            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno, auditoria),
             "input_contexto": ctx,
             "razonamiento": razonamiento,
             "accion_tipo": datos.get("accion_tipo"),
@@ -1386,7 +1409,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
             "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelo_exacto": resultado["modelo"],
-            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
+            "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno, auditoria),
             "input_contexto": ctx,
             "razonamiento": razonamiento,
             "accion_tipo": datos.get("accion_tipo"),
@@ -1461,7 +1484,7 @@ def ejecutar(ia: str, newsletter: bool, dry_run: bool, diseno: bool = False):
         "evento_id": f"{date.today().isoformat()}-{uuid.uuid4().hex[:8]}",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "modelo_exacto": resultado["modelo"],
-        "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno),
+        "tipo_tarea": tipo_tarea_de(datos, newsletter, diseno, auditoria),
         "input_contexto": ctx,
         "razonamiento": razonamiento,
         "accion_tipo": datos.get("accion_tipo"),
@@ -1540,7 +1563,7 @@ TIPO_POR_ACCION = {
 }
 
 
-def tipo_tarea_de(datos: dict, newsletter: bool, diseno: bool) -> str:
+def tipo_tarea_de(datos: dict, newsletter: bool, diseno: bool, auditoria: bool = False) -> str:
     """El tipo con el que se registra el turno, y por tanto de qué bote sale.
 
     En el turno de diseño se FUERZA a "diseno" aunque el modelo declare otra
@@ -1552,6 +1575,10 @@ def tipo_tarea_de(datos: dict, newsletter: bool, diseno: bool) -> str:
     deduce del `accion_tipo`, que sí suele venir."""
     if diseno:
         return "diseno"
+    if auditoria:
+        # Forzado, igual que el de diseño: es contabilidad y filtro del marcador, no una opinión del modelo.
+        # Cuenta contra el bote de CONTENIDO (todo lo que no es "diseno").
+        return "auditoria"
     declarado = (datos.get("tipo_tarea") or "").strip()
     # "diseno" es una etiqueta reservada: de ella depende qué bote paga el
     # turno (5 € contra 10 €) y en qué diario del marcador aparece. Un turno
@@ -1605,10 +1632,10 @@ def _lanzar_matriz_imagenes(ia: str, datos: dict, archivos_nuevos: dict, dry_run
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in {"claude", "gpt", "gemini", "deepseek"}:
-        print("Uso: python cron_agente.py <claude|gpt|gemini|deepseek> [--newsletter|--diseno] [--dry-run]")
+        print("Uso: python cron_agente.py <claude|gpt|gemini|deepseek> [--newsletter|--diseno|--auditoria] [--dry-run]")
         sys.exit(1)
     _flags = sys.argv[2:]
-    if "--newsletter" in _flags and "--diseno" in _flags:
-        raise SystemExit("--newsletter y --diseno son turnos distintos: elige uno")
+    if sum(f in _flags for f in ("--newsletter", "--diseno", "--auditoria")) > 1:
+        raise SystemExit("--newsletter, --diseno y --auditoria son turnos distintos: elige uno")
     ejecutar(sys.argv[1], "--newsletter" in _flags, "--dry-run" in _flags,
-             diseno="--diseno" in _flags)
+             diseno="--diseno" in _flags, auditoria="--auditoria" in _flags)

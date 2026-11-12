@@ -4,12 +4,13 @@
 # cron_agente.py a propósito: el Python ya está probado y lo que hace es
 # escribir+commitear en el repo; servirlo es cosa del despliegue.
 set -euo pipefail
-IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter|--diseno]}"
+IA="${1:?Uso: run_agente.sh <claude|gpt|gemini|deepseek> [--newsletter|--diseno|--auditoria]}"
 shift || true
 
 TIPO="turno diario"
 [[ "$*" == *"--newsletter"* ]] && TIPO="newsletter semanal"
 [[ "$*" == *"--diseno"* ]] && TIPO="turno de diseño"
+[[ "$*" == *"--auditoria"* ]] && TIPO="auditoría semanal"
 
 # Aviso de control por Telegram (pedido por Tato para vigilar los 8 turnos
 # reales de las 4 IAs): lanzamiento al principio, éxito o fallo al final, vía
